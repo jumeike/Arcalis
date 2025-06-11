@@ -1,0 +1,114 @@
+UniqueID Service Test Summary
+Generated: Sat May 31 06:40:13 AM EDT 2025
+Server: localhost:9090
+
+=== baseline_1thread_20250530_005524.csv ===
+Throughput: 34482.8 req/s
+Avg Latency: 24 μs
+Success Rate: 1000/1000 (100.00%)
+
+=== baseline_1thread_20250531_064012.csv ===
+Throughput: 26315.8 req/s
+Avg Latency: 32 μs
+Success Rate: 1000/1000 (100.00%)
+
+=== baseline_2threads_20250530_005524.csv ===
+Throughput: 66666.7 req/s
+Avg Latency: 25 μs
+Success Rate: 2000/2000 (100.00%)
+
+=== baseline_2threads_20250531_064012.csv ===
+Throughput: 50000 req/s
+Avg Latency: 34 μs
+Success Rate: 2000/2000 (100.00%)
+
+=== baseline_4threads_20250530_005524.csv ===
+Throughput: 129032 req/s
+Avg Latency: 25 μs
+Success Rate: 4000/4000 (100.00%)
+
+=== baseline_4threads_20250531_064012.csv ===
+Throughput: 95238.1 req/s
+Avg Latency: 35 μs
+Success Rate: 4000/4000 (100.00%)
+
+=== baseline_8threads_20250530_005524.csv ===
+Throughput: 258065 req/s
+Avg Latency: 26 μs
+Success Rate: 8000/8000 (100.00%)
+
+=== baseline_8threads_20250531_064012.csv ===
+Throughput: 195122 req/s
+Avg Latency: 33 μs
+Success Rate: 8000/8000 (100.00%)
+
+=== baseline_high_load_20250530_005524.csv ===
+Throughput: 279720 req/s
+Avg Latency: 25 μs
+Success Rate: 40000/40000 (100.00%)
+
+=== baseline_high_load_20250531_064012.csv ===
+Throughput: 268456 req/s
+Avg Latency: 27 μs
+Success Rate: 40000/40000 (100.00%)
+
+=== latency_1thread_20250530_005525.csv ===
+Throughput: 38167.9 req/s
+Avg Latency: 25 μs
+Success Rate: 5000/5000 (100.00%)
+
+=== latency_1thread_20250531_064013.csv ===
+Throughput: 39370.1 req/s
+Avg Latency: 24 μs
+Success Rate: 5000/5000 (100.00%)
+
+=== latency_2threads_20250530_005525.csv ===
+Throughput: 76335.9 req/s
+Avg Latency: 25 μs
+Success Rate: 10000/10000 (100.00%)
+
+=== latency_2threads_20250531_064013.csv ===
+Throughput: 74626.9 req/s
+Avg Latency: 25 μs
+Success Rate: 10000/10000 (100.00%)
+
+=== latency_4threads_20250530_005525.csv ===
+Throughput: 148148 req/s
+Avg Latency: 24 μs
+Success Rate: 20000/20000 (100.00%)
+
+=== latency_4threads_20250531_064013.csv ===
+Throughput: 143885 req/s
+Avg Latency: 25 μs
+Success Rate: 20000/20000 (100.00%)
+
+=== stress_16threads_20250530_005524.csv ===
+Throughput: 533333 req/s
+Avg Latency: 24 μs
+Success Rate: 32000/32000 (100.00%)
+
+=== stress_16threads_20250531_064012.csv ===
+Throughput: 524590 req/s
+Avg Latency: 23 μs
+Success Rate: 32000/32000 (100.00%)
+
+=== stress_burst_20250530_005524.csv ===
+Throughput: 147601 req/s
+Avg Latency: 25 μs
+Success Rate: 40000/40000 (100.00%)
+
+=== stress_burst_20250531_064012.csv ===
+Throughput: 146520 req/s
+Avg Latency: 25 μs
+Success Rate: 40000/40000 (100.00%)
+
+=== stress_sustained_20250530_005525.csv ===
+Throughput: 278746 req/s
+Avg Latency: 26 μs
+Success Rate: 160000/160000 (100.00%)
+
+=== stress_sustained_20250531_064012.csv ===
+Throughput: 293578 req/s
+Avg Latency: 25 μs
+Success Rate: 160000/160000 (100.00%)
+

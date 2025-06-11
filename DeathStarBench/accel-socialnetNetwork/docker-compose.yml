@@ -1,0 +1,30 @@
+version: "3.9"
+services:
+  post-storage-memcached:
+    image: memcached
+    hostname: post-storage-memcached
+    ports:
+      - 11212:11211
+    restart: always
+
+  post-storage-mongodb:
+    image: mongo:4.4.6
+    hostname: post-storage-mongodb
+    ports:
+      - 27019:27017
+    restart: always
+
+  user-timeline-redis:
+    image: redis
+    hostname: user-timeline-redis
+    ports:
+      - 6383:6379
+    restart: always
+
+  user-timeline-mongodb:
+    image: mongo:4.4.6
+    hostname: user-timeline-mongodb
+    ports:
+      - 27020:27017
+    restart: always
+

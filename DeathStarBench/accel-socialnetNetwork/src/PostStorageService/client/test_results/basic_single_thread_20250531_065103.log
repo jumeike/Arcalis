@@ -1,0 +1,30 @@
+=== PostStorage Service Client Test ===
+Server: localhost:9091
+Threads: 1
+Operations per thread: 10
+Warmup operations per thread: 5
+Mix: Store/Read/ReadMulti operations
+
+Thread 0 connected to post storage server
+Thread 0 completed warmup, stored 5 posts
+Thread 0 stored post 5
+Thread 0 completed, stored 10 total posts
+
+=== TEST RESULTS ===
+Total Requests: 10
+Successful: 10 (100%)
+Failed: 0 (0%)
+
+=== OPERATION BREAKDOWN ===
+Store operations: 5
+Read operations: 5
+Read multi operations: 0
+
+=== PERFORMANCE ===
+Total Duration: 7 ms
+Throughput: 1428.57 req/s
+
+=== LATENCY ===
+Average: 303 μs
+Min: 127 μs
+Max: 1426 μs

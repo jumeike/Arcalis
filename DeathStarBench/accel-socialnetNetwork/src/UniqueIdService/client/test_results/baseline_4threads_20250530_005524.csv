@@ -1,0 +1,12 @@
+# UniqueID Service Test Results
+# Timestamp: 1748580924
+threads,4
+requests_per_thread,1000
+total_requests,4000
+successful_requests,4000
+failed_requests,0
+duration_ms,31
+throughput_rps,129032
+avg_latency_us,25
+min_latency_us,16
+max_latency_us,153

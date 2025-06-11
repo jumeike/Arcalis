@@ -1,0 +1,31 @@
+=== PostStorage Service Client Test ===
+Server: localhost:9091
+Threads: 1
+Operations per thread: 10
+Warmup operations per thread: 5
+Mix: Store/Read/ReadMulti operations
+
+Thread 0 connected to post storage server
+Thread 0 completed warmup, stored 5 posts
+Thread 0 read 2 posts in bulk
+Thread 0 - Operation 5 failed: TException - service has thrown: ServiceException(errorCode=SE_THRIFT_HANDLER_ERROR, message=Post_ids are duplicated)
+Thread 0 completed, stored 8 total posts
+
+=== TEST RESULTS ===
+Total Requests: 10
+Successful: 9 (90%)
+Failed: 1 (10%)
+
+=== OPERATION BREAKDOWN ===
+Store operations: 3
+Read operations: 4
+Read multi operations: 2
+
+=== PERFORMANCE ===
+Total Duration: 9 ms
+Throughput: 1000 req/s
+
+=== LATENCY ===
+Average: 584 μs
+Min: 208 μs
+Max: 1475 μs

@@ -1,0 +1,36 @@
+=== PostStorage Service Client Test ===
+Server: localhost:9091
+Threads: 1
+Operations per thread: 10
+Warmup operations per thread: 5
+Mix: Store/Read/ReadMulti operations
+
+Thread 0 connected to post storage server
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 0 })
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 3 })
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 4 })
+Thread 0 completed warmup, stored 2 posts
+Thread 0 - Operation 0 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 5 })
+Thread 0 - Operation 4 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 9 })
+Thread 0 - Operation 5 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 10 })
+Thread 0 - Operation 8 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 13 })
+Thread 0 completed, stored 6 total posts
+
+=== TEST RESULTS ===
+Total Requests: 10
+Successful: 6 (60%)
+Failed: 4 (40%)
+
+=== OPERATION BREAKDOWN ===
+Store operations: 4
+Read operations: 2
+Read multi operations: 0
+
+=== PERFORMANCE ===
+Total Duration: 9 ms
+Throughput: 666.667 req/s
+
+=== LATENCY ===
+Average: 752 μs
+Min: 160 μs
+Max: 2069 μs

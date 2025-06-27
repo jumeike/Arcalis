@@ -72,6 +72,20 @@ public:
     size_t getRecvDataSize() const { return recv_data_size_; }
     size_t getRespDataSize() const { return resp_data_size_; }
     
+    void touchAllPages(uint8_t* buffer, size_t size) {
+        const size_t page_size = 4096;  // 4KB pages
+        for (size_t offset = 0; offset < size; offset += page_size) {
+            volatile uint8_t dummy = buffer[offset];  // Touch page
+            buffer[offset] = 0;  // Write to page to ensure it's mapped
+        }
+    }
+
+    size_t estimateRespSize(int max_requests) {
+        if (max_requests <= 0) return FIXED_BUFFER_SIZE;
+        // Each response ~49 bytes + 64-byte alignment = ~64 bytes per response
+        return max_requests * 128; // Use 128 instead of 64 (double alignment)
+    }
+    
     uint16_t getCurrentPacketSize() const {
         if (read_pos_ + sizeof(uint64_t) + sizeof(uint16_t) > recv_data_size_) return 0;
         uint16_t pkt_size = *reinterpret_cast<const uint16_t*>(recv_buf_ + read_pos_ + sizeof(uint64_t));
@@ -122,7 +136,11 @@ public:
 
         //std::cout << "Loaded trace from " << filename << ": " << recv_data_size_ << " bytes" << std::endl;
         //std::cout << "Aligned RPC data address: 0x" << std::hex
-        //          << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
+        //           << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
+
+        // Touch only the pages we'll actually use
+        touchAllPages(recv_buf_, recv_data_size_);
+        touchAllPages(resp_buf_, estimateRespSize(max_requests));
     }
 
     bool validateReplay(const std::string& expected_file) {

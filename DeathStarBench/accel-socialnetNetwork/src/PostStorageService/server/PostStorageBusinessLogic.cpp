@@ -1,4 +1,5 @@
 #include "PostStorageBusinessLogic.h"
+#include "PostStorageHandler.h"
 #include <chrono>
 #include <cstring>
 #include <future>
@@ -9,7 +10,469 @@ PostStorageBusinessLogic::PostStorageBusinessLogic(
     memcached_pool_st* memcached_pool, mongoc_client_pool_t* mongodb_pool)
     : _memcached_client_pool(memcached_pool), _mongodb_client_pool(mongodb_pool) {
   LOG_DEBUG(info) << "PostStorageBusinessLogic initialized";
+
+#ifdef ENABLE_GEM5
+  if (!initializeBuffers()) {
+    LOG(error) << "Failed to initialize buffers";
+  }
+#endif // ENABLE_GEM5
 }
+
+#ifdef ENABLE_GEM5
+PostStorageBusinessLogic::~PostStorageBusinessLogic() {
+    cleanupBuffers();
+}
+
+bool PostStorageBusinessLogic::initializeBuffers() {
+    try {
+        raw_recv_buf_ = new uint8_t[BUFFER_SIZE + ALIGNMENT];
+        raw_resp_buf_ = new uint8_t[BUFFER_SIZE + ALIGNMENT];
+        recv_buf_ = allocateAlignedBuffer(raw_recv_buf_);
+        resp_buf_ = allocateAlignedBuffer(raw_resp_buf_);
+
+        std::memset(recv_buf_, 0, BUFFER_SIZE);
+        std::memset(resp_buf_, 0, BUFFER_SIZE);
+
+        LOG(info) << "PostStorage Buffers initialized - recv: " << std::hex << reinterpret_cast<uintptr_t>(recv_buf_);
+        LOG(info) << "PostStorage Buffers initialized - resp: " << std::hex << reinterpret_cast<uintptr_t>(resp_buf_);
+        return true;
+    } catch (const std::exception& e) {
+        LOG(error) << "PostStorage Buffer initialization failed: " << e.what();
+        cleanupBuffers();
+        return false;
+    }
+}
+
+void PostStorageBusinessLogic::cleanupBuffers() {
+    if (raw_recv_buf_) {
+        delete[] raw_recv_buf_;
+        raw_recv_buf_ = nullptr;
+        recv_buf_ = nullptr;
+    }
+    if (raw_resp_buf_) {
+        delete[] raw_resp_buf_;
+        raw_resp_buf_ = nullptr;
+        resp_buf_ = nullptr;
+    }
+}
+
+uint8_t* PostStorageBusinessLogic::allocateAlignedBuffer(uint8_t* raw_buf) {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(raw_buf);
+    uintptr_t aligned_addr = (addr + 0x3F) & ~0x3F;
+    return reinterpret_cast<uint8_t*>(aligned_addr);
+}
+
+void PostStorageBusinessLogic::setTraceConfig(const std::string& file, int requests) {
+    trace_file_ = file;
+    num_requests_ = requests;
+
+    // Initialize socket's replay with config
+    auto socket = getSocketFromTransport();
+    if (socket) {
+        socket->getReplaySocket().loadTrace(trace_file_, num_requests_);
+    }
+}
+
+apache::thrift::transport::TSocket* PostStorageBusinessLogic::getSocketFromTransport() {
+   auto buffered = dynamic_cast<apache::thrift::transport::TBufferedTransport*>(in_->getTransport().get());
+   return buffered ? dynamic_cast<apache::thrift::transport::TSocket*>(buffered->getUnderlyingTransport().get()) : nullptr;
+}
+
+void PostStorageBusinessLogic::callSWread() {
+    std::string fname;
+    ::apache::thrift::protocol::TMessageType mtype;
+    int32_t seqid;
+    in_->readMessageBegin(fname, mtype, seqid);
+    if (mtype != ::apache::thrift::protocol::T_CALL && mtype != ::apache::thrift::protocol::T_ONEWAY) {
+        ::apache::thrift::GlobalOutput.printf("received invalid message type %d from client", mtype);
+        return;
+    }
+    fname_ = fname;
+    seqid_ = seqid;
+
+    // Read based on operation type
+    if (processor_->getEventHandler().get() != NULL) {
+        std::string service_method = "PostStorageService." + fname;
+        processor_->getEventHandler()->preRead(ctx_, service_method.c_str());
+    }
+
+    if (fname == "StorePost") {
+        store_args_.read(in_.get());
+    } else if (fname == "ReadPost") {
+        read_args_.read(in_.get());
+    } else if (fname == "ReadPosts") {
+        read_posts_args_.read(in_.get());
+    }
+
+    in_->readMessageEnd();
+    uint32_t bytes = in_->getTransport()->readEnd();
+    if (processor_->getEventHandler().get() != NULL) {
+        std::string service_method = "PostStorageService." + fname;
+        processor_->getEventHandler()->postRead(ctx_, service_method.c_str(), bytes);
+    }
+
+#ifdef ENABLE_TRACING
+    if (fname == "StorePost") {
+        LOG_RPC_TO_APP(store_args_);
+    } else if (fname == "ReadPost") {
+        LOG_RPC_TO_APP(read_args_);
+    } else if (fname == "ReadPosts") {
+        LOG_RPC_TO_APP(read_posts_args_);
+    }
+#endif
+}
+
+bool PostStorageBusinessLogic::callSWdispatch() {
+    return processor_->dispatchCall(in_.get(), out_.get(), fname_, seqid_, connectionContext_);
+}
+
+void PostStorageBusinessLogic::callSWwrite() {
+#ifdef ENABLE_TRACING
+    if (fname_ == "StorePost") {
+        LOG_APP_TO_RPC(store_args_.req_id, store_result_);
+    } else if (fname_ == "ReadPost") {
+        LOG_APP_TO_RPC(read_args_.req_id, read_result_);
+    } else if (fname_ == "ReadPosts") {
+        LOG_APP_TO_RPC(read_posts_args_.req_id, read_posts_result_);
+    }
+#endif
+
+    // Write response using stored result
+    if (processor_->getEventHandler().get() != NULL) {
+        std::string service_method = "PostStorageService." + fname_;
+        processor_->getEventHandler()->preWrite(ctx_, service_method.c_str());
+    }
+
+    out_->writeMessageBegin(fname_, ::apache::thrift::protocol::T_REPLY, seqid_);
+
+    if (fname_ == "StorePost") {
+        store_result_.write(out_.get());
+    } else if (fname_ == "ReadPost") {
+        read_result_.write(out_.get());
+    } else if (fname_ == "ReadPosts") {
+        read_posts_result_.write(out_.get());
+    }
+
+    out_->writeMessageEnd();
+    uint32_t bytes = out_->getTransport()->writeEnd();
+    out_->getTransport()->flush();
+    if (processor_->getEventHandler().get() != NULL) {
+        std::string service_method = "PostStorageService." + fname_;
+        processor_->getEventHandler()->postWrite(ctx_, service_method.c_str(), bytes);
+    }
+}
+
+void PostStorageBusinessLogic::callSWsendresp(bool success) {
+    handler_->success_ = success;
+}
+
+void PostStorageBusinessLogic::callSWSendBuf() {
+    if (handler_->operation_type_ == 0) {
+        // StorePost - read success flag
+        bool success = *reinterpret_cast<bool*>(resp_buf_);
+        LOG_DEBUG(debug) << "StorePost completed in SW Path: " << success;
+    } else if (handler_->operation_type_ == 1) {
+        // ReadPost - read postid
+        handler_->current_post_ = *reinterpret_cast<Post*>(resp_buf_);
+        LOG_DEBUG(debug) << "ReadPost completed in SW Path, post_id: " << handler_->current_post_.post_id;
+    } else if (handler_->operation_type_ == 2) {
+        // Read posts from resp_buf_
+        int32_t count = *reinterpret_cast<int32_t*>(resp_buf_ + resp_buf_offset_);
+        handler_->current_posts_.clear();
+        handler_->current_posts_.reserve(count);
+        for (int i = 0; i < count; i++) {
+          Post post = *reinterpret_cast<Post*>(resp_buf_ + i * sizeof(Post));
+          handler_->current_posts_.push_back(post);
+          LOG_DEBUG(debug) << "ReadPosts completed in SW Path, post size: " << handler_->current_posts_.size();
+        }
+    }
+}
+#endif // ENABLE_GEM5
+
+#ifdef ENABLE_CEREBELLUM
+void PostStorageBusinessLogic::callEngineRead() {
+    auto socket = getSocketFromTransport();
+
+    // 1) Send recv buffer address
+    uint8_t* recv_addr = socket->getReplaySocket().getRecvBufferAddr();
+    volatile uint64_t cmd = reinterpret_cast<uint64_t>(recv_addr) | cmd_send_dpdk_buf;
+    *sendAddress = cmd;
+    volatile uint64_t ack = *readAddress;
+
+    // 2) Send total data size
+    size_t total_size = socket->getReplaySocket().getCurrentPacketSize();
+    uint64_t dpdk_len = ((uint64_t)total_size & 0x7FF) << 4;
+    cmd = dpdk_len | cmd_send_dpdk_len;
+    *sendAddress = cmd;
+    ack = *readAddress;
+
+    // 3) Advance recv buffer pointer to next position
+    socket->getReplaySocket().advanceReadPos();
+}
+
+bool PostStorageBusinessLogic::callEngineDispatch() {
+    // 1) Send app recv buffer address
+    volatile uint64_t cmd = reinterpret_cast<uint64_t>(recv_buf_) | cmd_set_app_flag;
+    *sendAddress = cmd;
+
+    // 2) Wait for Engine to set the request
+    volatile uint64_t request = *readAddress;
+    int operation_type = (request & 0xF);
+
+    // 3) Call appropriate BusinessLogic Function
+    if (operation_type == 0) {
+        StorePost();
+    } else if (operation_type == 1) {
+        ReadPost();
+    } else if (operation_type == 2) {
+        ReadPosts();
+    }
+
+    LOG_DEBUG(debug) << "PostStorage operation " << operation_type << " completed in Engine Path";
+    return true;
+}
+
+void PostStorageBusinessLogic::callEngineWrite() {
+    auto socket = getSocketFromTransport();
+
+    // 1) Send DPDK resp buffer address
+    uint8_t* resp_addr = socket->getReplaySocket().getRespBufferAddr();
+    volatile uint64_t cmd = reinterpret_cast<uint64_t>(resp_addr) | cmd_set_dpdk_flag;
+    *sendAddress = cmd;
+    volatile uint64_t ack = *readAddress;
+
+    // 2) Advance resp buffer pointer to next position
+    uint16_t data_size;
+    if (handler_->operation_type_ == 0) {
+        data_size = 22; // fixed response size for StorePost
+    } else if (handler_->operation_type_ == 1) {
+        data_size = 371; // fixed response size for ReadPost
+    } else if (handler_->operation_type_ == 2) {
+        data_size = 1071; // fixed response size for ReadPosts
+    } else {
+        LOG(error) << "Unknown operation type: " << handler_->operation_type_;
+        return;
+    }
+    socket->getReplaySocket().advanceWritePos(data_size);
+}
+
+void PostStorageBusinessLogic::callEngineSendresp(bool success) {
+    uint64_t response = 0;
+    size_t response_len = 0;
+    
+    if (handler_->operation_type_ == 0) {
+        response_len = sizeof(bool); // StorePost returns success
+    } else if (handler_->operation_type_ == 1) {
+        response_len = sizeof(int64_t); // ReadPost returns post_id
+    } else if (handler_->operation_type_ == 2) {
+        response_len = sizeof(int32_t); // ReadPosts returns count
+    }
+    
+    response |= (success ? 1ULL : 0ULL) << 4;
+    response |= (response_len & 0x7FF) << 5;
+    
+    uint64_t cmd = response | cmd_send_app_resp;
+    *sendAddress = cmd;
+    volatile uint64_t ack = *readAddress;
+}
+
+void PostStorageBusinessLogic::callEngineSendBuf() {
+    // 1) Send response buffer to Engine
+    uint64_t cmd = reinterpret_cast<uint64_t>(resp_buf_) | cmd_send_app_buf;
+    *sendAddress = cmd;
+    volatile uint64_t ack = *readAddress;
+}
+#endif // ENABLE_CEREBELLUM
+
+#ifdef ENABLE_GEM5
+void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* processor,
+            std::shared_ptr<::apache::thrift::protocol::TProtocol> in,
+            std::shared_ptr<::apache::thrift::protocol::TProtocol> out,
+            void* connectionContext)
+{
+    LOG(info) << "JU:JU =========================================";
+    LOG(info) << "JU:JU Start PostStorage business logic runLoop";
+
+    // Store protocol objects
+    processor_ = processor;
+    in_ = in;
+    out_ = out;
+    connectionContext_ = connectionContext;
+    read_pos_ = 0;
+    write_pos_ = 0;
+
+    int runs = 0;
+
+    for (bool done = false; !done;) {
+        if (runs == 10000) {
+            LOG(info) << "JU:JU Begin ROI";
+            #ifdef ENABLE_GEM5_TEST
+            m5_exit_addr(0);
+            #endif
+        }
+
+        #ifdef ENABLE_CEREBELLUM
+        callEngineRead();
+        bool res = callEngineDispatch();
+        callEngineWrite();
+        #else
+        callSWread();
+        bool res = callSWdispatch();
+        callSWwrite();
+        #endif
+
+        if (!res)
+            break;
+
+        #ifdef ENABLE_GEM5
+        done = checkReplayEOF();
+        if (done) {
+            LOG(info) << "JU:JU EOF reached - trace replay complete";
+        }
+        #endif
+
+        runs++;
+    }
+
+    #ifdef ENABLE_GEM5_TEST
+    m5_work_end_addr(0, 0);
+    LOG(info) << "JU:JU End ROI";
+    #endif
+
+    #ifdef ENABLE_GEM5
+    if (validateReplay()) {
+        LOG(info) << "JU:JU PostStorage Replay validation PASSED";
+    } else {
+        LOG(info) << "JU:JU PostStorage Replay validation FAILED";
+    }
+    #endif
+
+    LOG(info) << "JU:JU Finished PostStorage business logic runLoop";
+    LOG(info) << "JU:JU =========================================";
+}
+
+void PostStorageBusinessLogic::StorePost() {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    // Read request from recv_buf
+    uint8_t* buf = recv_buf_;
+    int64_t req_id = *reinterpret_cast<int64_t*>(buf);
+    int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
+    Post post = *reinterpret_cast<Post*>(buf + 12); // Assuming Post is packed
+
+    bool operation_success = false;
+    try {
+        // Call original StorePost logic with MongoDB
+        std::map<std::string, std::string> empty_carrier;
+        StorePost(req_id, post, empty_carrier);
+        operation_success = true;
+
+        // Write success to resp_buf
+        *reinterpret_cast<bool*>(resp_buf_) = true;
+
+    } catch (const std::exception& e) {
+        LOG(error) << "StorePost failed: " << e.what();
+        *reinterpret_cast<bool*>(resp_buf_) = false;
+    }
+
+    LOG_DEBUG(debug) << "Request " << req_id << " stored post_id: " << post.post_id;
+
+#ifdef ENABLE_CEREBELLUM
+    callEngineSendresp(operation_success);
+    callEngineSendBuf();
+#else
+    callSWsendresp(operation_success);
+    callSWSendBuf();
+#endif // ENABLE_CEREBELLUM
+}
+
+void PostStorageBusinessLogic::ReadPost() {
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // Read request from recv_buf
+    uint8_t* buf = recv_buf_;
+    int64_t req_id = *reinterpret_cast<int64_t*>(buf);
+    int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
+    int64_t post_id = *reinterpret_cast<int64_t*>(buf + 12);
+
+    bool operation_success = false;
+    try {
+        // Call original ReadPost logic with MongoDB/Memcached
+        Post retrieved_post;
+        std::map<std::string, std::string> empty_carrier;
+        ReadPost(retrieved_post, req_id, post_id, empty_carrier);
+
+        // Write result to resp_buf 
+        *reinterpret_cast<Post*>(resp_buf_) = retrieved_post;
+        operation_success = true;
+
+    } catch (const std::exception& e) {
+        LOG(error) << "ReadPost failed: " << e.what();
+        *reinterpret_cast<int64_t*>(resp_buf_) = -1; // Error indicator
+    }
+
+    LOG_DEBUG(debug) << "Request " << req_id << " read post_id: " << post_id
+                    << " success: " << operation_success;
+
+#ifdef ENABLE_CEREBELLUM
+    callEngineSendresp(operation_success);
+    callEngineSendBuf();
+#else
+    callSWsendresp(operation_success);
+    callSWSendBuf();
+#endif // ENABLE_CEREBELLUM
+}
+
+void PostStorageBusinessLogic::ReadPosts() {
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // Read request from recv_buf
+    uint8_t* buf = recv_buf_;
+    int64_t req_id = *reinterpret_cast<int64_t*>(buf);
+    int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
+    int32_t post_count = *reinterpret_cast<int32_t*>(buf + 12);
+    
+    // Read post_ids array
+    std::vector<int64_t> post_ids;
+    for (int i = 0; i < post_count; i++) {
+        post_ids.push_back(*reinterpret_cast<int64_t*>(buf + 16 + i * 8));
+    }
+
+    bool operation_success = false;
+    try {
+        // Call original ReadPosts logic with MongoDB/Memcached
+        std::vector<Post> retrieved_posts;
+        std::map<std::string, std::string> empty_carrier;
+        ReadPosts(retrieved_posts, req_id, post_ids, empty_carrier);
+
+        // Write count at the start of resp_buf leads to segmentation fault
+        // *reinterpret_cast<int32_t*>(resp_buf_) = retrieved_posts.size();
+
+        // Write each Post to resp_buf
+        resp_buf_offset_ = 0;
+        for (int i = 0; i < retrieved_posts.size(); i++) {
+          *reinterpret_cast<Post*>(resp_buf_ + resp_buf_offset_) = retrieved_posts[i]; // segfault here if offset is not 0
+          resp_buf_offset_ += sizeof(Post);
+        }
+        // Write count at the end
+        *reinterpret_cast<int32_t*>(resp_buf_ + resp_buf_offset_) = retrieved_posts.size();
+        operation_success = true;
+
+    } catch (const std::exception& e) {
+        LOG(error) << "ReadPosts failed: " << e.what();
+        *reinterpret_cast<int32_t*>(resp_buf_) = -1; // Error indicator
+    }
+
+    LOG_DEBUG(debug) << "Request " << req_id << " read " << post_count << " posts";
+
+#ifdef ENABLE_CEREBELLUM
+    callEngineSendresp(operation_success);
+    callEngineSendBuf();
+#else
+    callSWsendresp(operation_success);
+    callSWSendBuf();
+#endif // ENABLE_CEREBELLUM
+}
+#endif // ENABLE_GEM5
 
 void PostStorageBusinessLogic::StorePost(int64_t req_id, const Post& post,
                                          const std::map<std::string, std::string>& carrier) {
@@ -153,11 +616,13 @@ void PostStorageBusinessLogic::ReadPost(Post& _return, int64_t req_id, int64_t p
   _memcached_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(memcached_end - memcached_start).count();
 
   if (!post_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = memcached_strerror(memcached_client, memcached_rc);
-    memcached_pool_push(_memcached_client_pool, memcached_client);
-    throw se;
+    LOG(debug) << "Memcached error, falling back to MongoDB";
+    // ServiceException se;
+    // se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
+    // se.message = "Error in ReadPost !post_mmc && memcached_rc != MEMCACHED_NOTFOUND";
+    // se.message = memcached_strerror(memcached_client, memcached_rc);
+    // memcached_pool_push(_memcached_client_pool, memcached_client);
+    // throw se;
   }
   memcached_pool_push(_memcached_client_pool, memcached_client);
 
@@ -295,7 +760,8 @@ void PostStorageBusinessLogic::ReadPosts(std::vector<Post>& _return, int64_t req
                << memcached_strerror(memcached_client, memcached_rc);
     ServiceException se;
     se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = memcached_strerror(memcached_client, memcached_rc);
+    se.message = "Error in ReadPosts -> memcached_rc != MEMCACHED_SUCCESS";
+    //se.message = memcached_strerror(memcached_client, memcached_rc);
     memcached_pool_push(_memcached_client_pool, memcached_client);
     throw se;
   }
@@ -456,6 +922,18 @@ void PostStorageBusinessLogic::ReadPosts(std::vector<Post>& _return, int64_t req
   }
 
   if (return_map.size() != post_ids.size()) {
+    std::vector<int64_t> missing_ids;
+    for (auto& post_id : post_ids) {
+        if (return_map.find(post_id) == return_map.end()) {
+            missing_ids.push_back(post_id);
+        }
+    }
+    
+    LOG(error) << "Missing post IDs: ";
+    for (auto& id : missing_ids) {
+        LOG(error) << "  " << id;
+    }
+
     LOG(error) << "Return set incomplete";
     ServiceException se;
     se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
@@ -520,7 +998,7 @@ void PostStorageBusinessLogic::SetPostToMemcached(int64_t post_id, const std::st
                               post_json.c_str(), post_json.length(),
                               static_cast<time_t>(0), static_cast<uint32_t>(0));
   if (memcached_rc != MEMCACHED_SUCCESS) {
-    LOG(warning) << "Failed to set post to Memcached: "
+    LOG(debug) << "Failed to set post to Memcached: "
                  << memcached_strerror(memcached_client, memcached_rc);
   }
   

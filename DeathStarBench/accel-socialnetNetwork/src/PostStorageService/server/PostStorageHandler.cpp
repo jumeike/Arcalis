@@ -6,16 +6,42 @@ PostStorageHandler::PostStorageHandler() {
   LOG(info) << "PostStorageHandler initialized";
 }
 
+#ifdef ENABLE_GEM5
+void PostStorageHandler::setRecvBuffer(uint8_t* buf) {
+  recv_buffer_ = buf;
+  ready_for_request_ = true;
+  business_logic_->setHandler(this);
+  LOG(debug) << "PostStorageHandler receive buffer set to: "
+            << std::hex << reinterpret_cast<uintptr_t>(buf);
+}
+#endif
+
 void PostStorageHandler::StorePost(int64_t req_id, const Post& post,
                                    const std::map<std::string, std::string>& carrier) {
   auto rpc_start_time = std::chrono::high_resolution_clock::now();
+
+#ifdef ENABLE_GEM5
+  operation_type_ = 0; // StorePost operation
+  success_ = false;
+#endif
   
   // Process incoming RPC (header parsing, tracing setup)
   ProcessIncomingRpc(req_id, carrier);
   
   // Delegate to business logic
   if (business_logic_ != nullptr) {
+#ifdef ENABLE_GEM5
+    uint8_t* buf = business_logic_->getRecvBuffer();
+
+    // Pack arguments into recv_buffer
+    *reinterpret_cast<int64_t*>(buf) = req_id; // req_id
+    *reinterpret_cast<int32_t*>(buf + 8) = 0; // operation_type
+    *reinterpret_cast<Post*>(buf + 12) = post; // Post object
+
+    business_logic_->StorePost();
+#else
     business_logic_->StorePost(req_id, post, carrier);
+#endif
   } else {
     LOG(error) << "Business logic not set for StorePost request " << req_id;
     ServiceException se;
@@ -54,9 +80,25 @@ void PostStorageHandler::ReadPost(Post& _return, int64_t req_id, int64_t post_id
   // Process incoming RPC (header parsing, tracing setup)
   ProcessIncomingRpc(req_id, carrier);
 
+#ifdef ENABLE_GEM5
+  operation_type_ = 1; // ReadPost operation
+  success_ = false;
+  current_post_ = Post(); // Initialize
+#endif
+
   // Delegate to business logic
   if (business_logic_ != nullptr) {
+#ifdef ENABLE_GEM5
+    // Pack arguments into recv_buffer
+    uint8_t* buf = business_logic_->getRecvBuffer();
+    *reinterpret_cast<int64_t*>(buf) = req_id;
+    *reinterpret_cast<int32_t*>(buf + 8) = 1; // operation_type
+    *reinterpret_cast<int64_t*>(buf + 12) = post_id;
+    
+    business_logic_->ReadPost();
+#else
     business_logic_->ReadPost(_return, req_id, post_id, carrier);
+#endif
   } else {
     LOG(error) << "Business logic not set for ReadPost request " << req_id;
     ServiceException se;
@@ -64,6 +106,13 @@ void PostStorageHandler::ReadPost(Post& _return, int64_t req_id, int64_t post_id
     se.message = "Business logic not initialized";
     throw se;
   }
+
+#ifdef ENABLE_GEM5
+  // Copy result from buffer-based processing
+  if (success_) {
+    _return = current_post_;
+  }
+#endif
 
   // Process outgoing RPC (response preparation, tracing completion)
   ProcessOutgoingRpc();
@@ -95,10 +144,30 @@ void PostStorageHandler::ReadPosts(std::vector<Post>& _return, int64_t req_id,
   
   // Process incoming RPC (header parsing, tracing setup)
   ProcessIncomingRpc(req_id, carrier);
-  
+
+#ifdef ENABLE_GEM5
+  operation_type_ = 2; // ReadPosts operation
+  success_ = false;
+  current_posts_.clear(); // Initialize
+#endif
+
   // Delegate to business logic
   if (business_logic_ != nullptr) {
+#ifdef ENABLE_GEM5
+    // Pack arguments into recv_buffer
+    uint8_t* buf = business_logic_->getRecvBuffer();
+    *reinterpret_cast<int64_t*>(buf) = req_id;
+    *reinterpret_cast<int32_t*>(buf + 8) = 2; // operation_type
+    *reinterpret_cast<int32_t*>(buf + 12) = post_ids.size();
+    // Pack post_ids array
+    for (int i = 0; i < std::min((int)post_ids.size(), 64); i++) {
+        *reinterpret_cast<int64_t*>(buf + 16 + i * 8) = post_ids[i];
+    }
+    
+    business_logic_->ReadPosts();
+#else
     business_logic_->ReadPosts(_return, req_id, post_ids, carrier);
+#endif  
   } else {
     LOG(error) << "Business logic not set for ReadPosts request " << req_id;
     ServiceException se;
@@ -106,7 +175,14 @@ void PostStorageHandler::ReadPosts(std::vector<Post>& _return, int64_t req_id,
     se.message = "Business logic not initialized";
     throw se;
   }
-  
+
+#ifdef ENABLE_GEM5
+  // Copy result from buffer-based processing
+  if (success_) {
+    _return = current_posts_;
+  }
+#endif
+
   // Process outgoing RPC (response preparation, tracing completion)
   ProcessOutgoingRpc();
   
@@ -143,7 +219,7 @@ void PostStorageHandler::ProcessIncomingRpc(int64_t req_id,
   // Update tracing metrics
   _tracing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(tracing_end - tracing_start).count();
   
-  LOG_DEBUG(debug) << "Processed incoming RPC for request " << req_id;
+  //LOG_DEBUG(debug) << "Processed incoming RPC for request " << req_id;
 }
 
 void PostStorageHandler::ProcessOutgoingRpc() {
@@ -156,7 +232,7 @@ void PostStorageHandler::ProcessOutgoingRpc() {
   // Update tracing metrics
   _tracing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(tracing_end - tracing_start).count();
   
-  LOG_DEBUG(debug) << "Processed outgoing RPC";
+  //LOG_DEBUG(debug) << "Processed outgoing RPC";
 }
 
 void PostStorageHandler::setBusinessLogic(PostStorageBusinessLogic* logic) {

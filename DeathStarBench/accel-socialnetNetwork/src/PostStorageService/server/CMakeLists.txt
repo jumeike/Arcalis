@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
 project(PostStorageService)
 
+# Debug build type
+set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING -DENABLE_GEM5")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_CEREBELLUM -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O3 -DDEBUG_LOGGING")
+
 find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)

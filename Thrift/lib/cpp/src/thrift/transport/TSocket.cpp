@@ -187,8 +187,10 @@ TSocket::~TSocket() {
   close();
 }
 
+#ifdef ENABLE_GEM5
 std::string TSocket::trace_file_ = "traces/dpdk_to_rpc.bin";
 int TSocket::num_requests_ = -1;
+#endif
 
 bool TSocket::hasPendingDataToRead() {
   if (!isOpen()) {

@@ -14,15 +14,42 @@
 #include "../../../gen-cpp/social_network_types.h"
 #include "../../logger.h"
 
+#ifdef ENABLE_CEREBELLUM
+#define cmd_send_dpdk_buf    0
+#define cmd_send_dpdk_len    1
+#define cmd_set_app_flag     2
+#define cmd_send_app_resp    3
+#define cmd_send_app_buf     4
+#define cmd_set_dpdk_flag    5
+#endif // ENABLE_CEREBELLUM
+
+#ifdef ENABLE_TRACING
+#include "PacketLogger.h"
+#endif
+
+#ifdef ENABLE_GEM5
+#include "../../../gen-cpp/PostStorageService.h"
+#include <thrift/TDispatchProcessor.h>
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/transport/TSocket.h>
+#include <PacketReplaySocket.h>
+#endif // ENABLE_GEM5
+
 namespace social_network {
 
 using json = nlohmann::json;
+
+class PostStorageHandler; // Forward declaration
 
 class PostStorageBusinessLogic {
  public:
   PostStorageBusinessLogic(memcached_pool_st* memcached_pool, 
                           mongoc_client_pool_t* mongodb_pool);
+#ifdef ENABLE_GEM5
+  ~PostStorageBusinessLogic();
+#else  
   ~PostStorageBusinessLogic() = default;
+#endif
 
   // Core business logic functions
   void StorePost(int64_t req_id, const Post& post,
@@ -33,9 +60,26 @@ class PostStorageBusinessLogic {
                  const std::vector<int64_t>& post_ids,
                  const std::map<std::string, std::string>& carrier);
 
+  // Buffer-based versions for accelerator offload
+#ifdef ENABLE_GEM5
+  void StorePost();
+  void ReadPost();
+  void ReadPosts();
+#endif
+
   // Metrics and monitoring
   void GetMetrics(std::map<std::string, int64_t>& metrics);
   void ResetMetrics();
+
+#ifdef ENABLE_GEM5
+  // Buffer access methods
+  uint8_t* getRecvBuffer() const { return recv_buf_; }
+  uint8_t* getRespBuffer() const { return resp_buf_; }
+  size_t getBufferSize() const { return BUFFER_SIZE; }
+   
+  void setHandler(PostStorageHandler* handler) { handler_ = handler; }
+  void setTraceConfig(const std::string& file, int requests);
+#endif // ENABLE_GEM5
 
  private:
   memcached_pool_st* _memcached_client_pool;
@@ -58,8 +102,87 @@ class PostStorageBusinessLogic {
   Post ParsePostFromJson(const json& post_json);
   void SetPostToMemcached(int64_t post_id, const std::string& post_json);
   std::string PostToJsonString(const Post& post);
-};
 
+#ifdef ENABLE_GEM5
+  // Pointer to PostStorageHandler
+  PostStorageHandler* handler_;
+  
+  // Buffer management
+  static constexpr size_t BUFFER_SIZE = 4096; // Larger buffer for post data
+  static constexpr size_t ALIGNMENT = 0x40;
+
+  uint8_t* raw_recv_buf_;
+  uint8_t* raw_resp_buf_;
+  uint8_t* recv_buf_;    // Receive Buffer
+  uint8_t* resp_buf_;    // Response Buffer
+  size_t resp_buf_offset_;
+
+  uint8_t* allocateAlignedBuffer(uint8_t* raw_buf);
+  bool initializeBuffers();
+  void cleanupBuffers();
+  
+  // Trace File management
+  std::string trace_file_;
+  int num_requests_;
+  apache::thrift::transport::TSocket* getSocketFromTransport();
+  bool checkReplayEOF() {
+     auto socket = getSocketFromTransport();
+     return socket ? socket->isReplayEOF() : false;
+  }
+  bool validateReplay() {
+     auto socket = getSocketFromTransport();
+     return socket ? socket->getReplaySocket().validateReplay("poststorage_traces/rpc_to_dpdk.bin") : false;
+  }
+#endif // ENABLE_GEM5
+ public:
+#ifdef ENABLE_GEM5
+// SW path member variables
+  std::string fname_;
+  int32_t seqid_;
+  void* ctx_;
+  apache::thrift::TDispatchProcessor* processor_;
+  std::shared_ptr<::apache::thrift::protocol::TProtocol> in_;
+  std::shared_ptr<::apache::thrift::protocol::TProtocol> out_;
+  
+  // Results for different operations
+  PostStorageService_StorePost_result store_result_;
+  PostStorageService_StorePost_args store_args_;
+  PostStorageService_ReadPost_result read_result_;
+  PostStorageService_ReadPost_args read_args_;
+  PostStorageService_ReadPosts_result read_posts_result_;
+  PostStorageService_ReadPosts_args read_posts_args_;
+  
+  void* connectionContext_;
+  size_t read_pos_, write_pos_;
+  
+// SW path member functions
+  void callSWread();
+  bool callSWdispatch();
+  void callSWwrite();
+  void callSWsendresp(bool success);
+  void callSWSendBuf();
+  void runLoop(apache::thrift::TDispatchProcessor* processor,
+            std::shared_ptr<::apache::thrift::protocol::TProtocol> in,
+            std::shared_ptr<::apache::thrift::protocol::TProtocol> out,
+            void* connectionContext); 
+#endif // ENABLE_GEM5  
+
+#ifdef ENABLE_CEREBELLUM
+// HW Accelerator path member variables
+  volatile uint64_t* readAddress;
+  volatile uint64_t* sendAddress;
+// HW Accelerator path member functions
+  void callEngineRead();
+  bool callEngineDispatch();
+  void callEngineWrite();
+  void callEngineSendresp(bool success);
+  void callEngineSendBuf();
+  void setAddresses(volatile uint64_t* sAddress, volatile uint64_t* rAddress) {
+         sendAddress = sAddress;
+         readAddress = rAddress;
+     }
+#endif // ENABLE_CEREBELLUM
+};
 } // namespace social_network
 
 #endif // SOCIAL_NETWORK_MICROSERVICES_POSTSTORAGEBUSINESSLOGIC_H

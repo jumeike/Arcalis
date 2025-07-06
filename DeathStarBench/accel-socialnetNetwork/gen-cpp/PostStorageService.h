@@ -33,7 +33,11 @@ class PostStorageServiceIfFactory {
 
   virtual ~PostStorageServiceIfFactory() {}
 
+#ifdef ENABLE_GEM5
+  virtual PostStorageServiceIf* getHandler(const apache::thrift::TConnectionInfo& connInfo) = 0;
+#else  
   virtual PostStorageServiceIf* getHandler(const ::apache::thrift::TConnectionInfo& connInfo) = 0;
+#endif  
   virtual void releaseHandler(PostStorageServiceIf* /* handler */) = 0;
   };
 
@@ -42,7 +46,11 @@ class PostStorageServiceIfSingletonFactory : virtual public PostStorageServiceIf
   PostStorageServiceIfSingletonFactory(const ::std::shared_ptr<PostStorageServiceIf>& iface) : iface_(iface) {}
   virtual ~PostStorageServiceIfSingletonFactory() {}
 
+#ifdef ENABLE_GEM5
+  virtual PostStorageServiceIf* getHandler(const apache::thrift::TConnectionInfo&) override {
+#else  
   virtual PostStorageServiceIf* getHandler(const ::apache::thrift::TConnectionInfo&) override {
+#endif  
     return iface_.get();
   }
   virtual void releaseHandler(PostStorageServiceIf* /* handler */) override {}
@@ -424,7 +432,11 @@ class PostStorageServiceClient : virtual public PostStorageServiceIf {
   ::apache::thrift::protocol::TProtocol* oprot_;
 };
 
+#ifdef ENABLE_GEM5  
+class PostStorageServiceProcessor : public apache::thrift::TDispatchProcessor {
+#else
 class PostStorageServiceProcessor : public ::apache::thrift::TDispatchProcessor {
+#endif
  protected:
   ::std::shared_ptr<PostStorageServiceIf> iface_;
   virtual bool dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext) override;
@@ -442,17 +454,31 @@ class PostStorageServiceProcessor : public ::apache::thrift::TDispatchProcessor 
     processMap_["ReadPost"] = &PostStorageServiceProcessor::process_ReadPost;
     processMap_["ReadPosts"] = &PostStorageServiceProcessor::process_ReadPosts;
   }
-
+#ifdef ENABLE_GEM5
+  //void runLoop(::apache::thrift::protocol::TProtocol* iprot, 
+  bool process(std::shared_ptr<::apache::thrift::protocol::TProtocol> iprot,
+             std::shared_ptr<::apache::thrift::protocol::TProtocol> oprot,
+             void* callContext) override;
+#endif
+ 
   virtual ~PostStorageServiceProcessor() {}
 };
 
+#ifdef ENABLE_GEM5
+class PostStorageServiceProcessorFactory : public apache::thrift::TProcessorFactory {
+ public:
+  PostStorageServiceProcessorFactory(const ::std::shared_ptr< PostStorageServiceIfFactory >& handlerFactory) noexcept :
+      handlerFactory_(handlerFactory) {}
+
+  ::std::shared_ptr< apache::thrift::TProcessor > getProcessor(const apache::thrift::TConnectionInfo& connInfo) override;
+#else
 class PostStorageServiceProcessorFactory : public ::apache::thrift::TProcessorFactory {
  public:
   PostStorageServiceProcessorFactory(const ::std::shared_ptr< PostStorageServiceIfFactory >& handlerFactory) noexcept :
       handlerFactory_(handlerFactory) {}
 
   ::std::shared_ptr< ::apache::thrift::TProcessor > getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) override;
-
+#endif
  protected:
   ::std::shared_ptr< PostStorageServiceIfFactory > handlerFactory_;
 };
@@ -505,11 +531,19 @@ class PostStorageServiceMultiface : virtual public PostStorageServiceIf {
 // only be used when you need to share a connection among multiple threads
 class PostStorageServiceConcurrentClient : virtual public PostStorageServiceIf {
  public:
+#ifdef ENABLE_GEM5
+  PostStorageServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else  
   PostStorageServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(prot);
   }
+#ifdef ENABLE_GEM5
+  PostStorageServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else  
   PostStorageServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(iprot,oprot);
   }
@@ -544,7 +578,11 @@ class PostStorageServiceConcurrentClient : virtual public PostStorageServiceIf {
   std::shared_ptr< ::apache::thrift::protocol::TProtocol> poprot_;
   ::apache::thrift::protocol::TProtocol* iprot_;
   ::apache::thrift::protocol::TProtocol* oprot_;
+#ifdef ENABLE_GEM5  
+  std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#else  
   std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#endif  
 };
 
 #ifdef _MSC_VER

@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <random>
 #include <mutex>
+#include <inttypes.h>
 
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TSocket.h>
@@ -58,53 +59,115 @@ struct TestMetrics {
 
 TestMetrics global_metrics;
 
-// Helper function to create a sample post
+// Helper function to create a sample post with fixed-length strings
 Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     Post post;
     post.post_id = post_id;
     post.req_id = req_id;
     post.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    post.text = "Sample post text from thread " + std::to_string(thread_id) + 
-                " with post_id " + std::to_string(post_id);
-    post.post_type = PostType::POST;
-    
-    // Creator
+ 
+    // Fixed-length text (64 chars)
+    char text_buf[65];
+    snprintf(text_buf, sizeof(text_buf), "Sample post text from thread %03d with post_id %010ld      ",
+             (int)(thread_id % 1000), post_id);
+    std::string text_str(text_buf);
+    text_str.resize(64, ' ');
+    post.text = text_str;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> post_type_dist(0, 3);
+    post.post_type = static_cast<PostType::type>(post_type_dist(gen)); //PostType::POST;
+ 
+    // Creator with fixed-length username (16 chars)
     post.creator.user_id = thread_id + 1000;
-    post.creator.username = "user_" + std::to_string(thread_id);
+    char username_buf[17];
+    snprintf(username_buf, sizeof(username_buf), "user_%011d", (int)(thread_id % 100000000000LL));
+    std::string username_str(username_buf);
+    username_str.resize(16, ' ');
+    post.creator.username = username_str;
+ 
+    // Sample URLs with fixed lengths
+    Url url;
+    char short_buf[33], expanded_buf[65];
+    snprintf(short_buf, sizeof(short_buf), "http://short.ly/%010" PRId64, (int64_t)(post_id % 10000000000LL));
+    snprintf(expanded_buf, sizeof(expanded_buf), "http://example.com/full_url/%020" PRId64, (int64_t)(post_id % 100000000000000LL));
     
-    // Sample URLs
-    if (post_id % 3 == 0) {
-        Url url;
-        url.shortened_url = "http://short.ly/" + std::to_string(post_id);
-        url.expanded_url = "http://example.com/full_url/" + std::to_string(post_id);
-        post.urls.push_back(url);
-    }
+    std::string short_str(short_buf);
+    std::string expanded_str(expanded_buf);
+    short_str.resize(32, ' ');
+    expanded_str.resize(64, ' ');
     
-    // Sample user mentions
-    if (post_id % 4 == 0) {
-        UserMention mention;
-        mention.user_id = (thread_id + 1) * 1000;
-        mention.username = "mentioned_user_" + std::to_string(thread_id + 1);
-        post.user_mentions.push_back(mention);
-    }
-    
-    // Sample media
-    if (post_id % 5 == 0) {
-        Media media;
-        media.media_id = post_id * 10;
-        media.media_type = "image";
-        post.media.push_back(media);
-    }
-    
+    url.shortened_url = short_str;
+    url.expanded_url = expanded_str;
+    post.urls.push_back(url);
+ 
+    // Sample user mentions with fixed-length username (16 chars)
+    UserMention mention;
+    mention.user_id = (thread_id + 1) * 1000;
+    char mention_buf[17];
+    snprintf(mention_buf, sizeof(mention_buf), "mentioned_%05d", (int)((thread_id + 1) % 100000));
+    std::string mention_str(mention_buf);
+    mention_str.resize(16, ' ');
+    mention.username = mention_str;
+    post.user_mentions.push_back(mention);
+ 
+    // Sample media with fixed-length type (8 chars)
+    Media media;
+    media.media_id = (post_id * 10) & 0x7FFFFFFFFFFFFFFF;
+    const char* media_types[] = {
+        "image   ",  // 8 chars
+        "video   ",  // 8 chars
+        "audio   ",  // 8 chars
+        "document",  // 8 chars
+        "gif     "   // 8 chars
+    };
+    media.media_type = media_types[post_id % 5];
+    post.media.push_back(media);
+ 
     return post;
+ }
+
+// Variables for generating unique post_ids
+static std::mutex id_generation_mutex;
+static int64_t current_timestamp = -1;
+static int counter = 0;
+
+// Helper function to generate unique ID (similar to UniqueID service)
+uint64_t generateUniquePostId(int thread_id) {
+    std::lock_guard<std::mutex> lock(id_generation_mutex);
+    
+    // Get current timestamp in milliseconds
+    int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    
+    // Handle counter logic like UniqueID service
+    if (current_timestamp > timestamp) {
+        // Time went backwards - this shouldn't happen normally
+        timestamp = current_timestamp;
+    }
+    
+    if (current_timestamp == timestamp) {
+        counter++;
+    } else {
+        current_timestamp = timestamp;
+        counter = 0;
+    }
+    
+    // Combine timestamp, thread_id, and counter for uniqueness
+    // Format: timestamp (40 bits) + thread_id (8 bits) + counter (16 bits)
+    int64_t unique_id = (timestamp << 24) | ((thread_id & 0xFF) << 16) | (counter & 0xFFFF);
+    
+    return unique_id & 0x7FFFFFFFFFFFFFFF;
 }
+
 
 void client_thread(int thread_id, const std::string& server_host, int server_port, 
                    int operations_per_thread, int warmup_operations, bool verbose) {
     try {
         std::shared_ptr<TTransport> socket(new TSocket(server_host, server_port));
-        std::shared_ptr<TTransport> transport(new TFramedTransport(socket));
+        //std::shared_ptr<TTransport> transport(new TFramedTransport(socket));
+        std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
         std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
         PostStorageServiceClient client(protocol);
         
@@ -125,10 +188,13 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         // Warmup phase
         for (int i = 0; i < warmup_operations; i++) {
             std::map<std::string, std::string> carrier;
-            carrier["trace-id"] = "warmup-" + std::to_string(thread_id) + "-" + std::to_string(i);
+            //carrier["trace-id"] = "warmup-" + std::to_string(thread_id) + "-" + std::to_string(i);
+            carrier["trace-id"] = "test-0000-0000";  // Fixed 14-char string
+            carrier["span-id"] = "00";               // Fixed 2-char string
             
             try {
-                int64_t post_id = thread_id * 100000 + i;
+                //int64_t post_id = thread_id * 100000 + i;
+                uint64_t post_id = generateUniquePostId(thread_id);
                 Post post = createSamplePost(post_id, i, thread_id);
                 client.StorePost(i, post, carrier);
                 stored_post_ids.push_back(post_id);
@@ -149,16 +215,22 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             global_metrics.total_requests++;
             
             std::map<std::string, std::string> carrier;
-            carrier["trace-id"] = "test-" + std::to_string(thread_id) + "-" + std::to_string(i);
-            carrier["span-id"] = std::to_string(thread_id * 10000 + i);
+            //carrier["trace-id"] = "test-" + std::to_string(thread_id) + "-" + std::to_string(i);
+            //carrier["span-id"] = std::to_string(thread_id * 10000 + i);
             
+            carrier["trace-id"] = "test-0000-0000";  // Fixed 14-char string
+            carrier["span-id"] = "00";               // Fixed 2-char string
+
             int operation = operation_dist(gen);
+            //int operation = i % 3;
             auto start_time = std::chrono::high_resolution_clock::now();
             
             try {
-                if (operation == 0 || stored_post_ids.empty()) {
+                //if (operation == 0 || stored_post_ids.empty()) {
+                if (operation == 0) {
                     // Store operation
-                    int64_t post_id = thread_id * 100000 + warmup_operations + i;
+                    //int64_t post_id = thread_id * 100000 + warmup_operations + i;
+                    int64_t post_id = generateUniquePostId(thread_id);
                     Post post = createSamplePost(post_id, thread_id * 10000 + i, thread_id);
                     
                     client.StorePost(thread_id * 10000 + i, post, carrier);
@@ -169,13 +241,14 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                         std::cout << "Thread " << thread_id << " stored post " << post_id << std::endl;
                     }
                     
-                } else if (operation == 1) {
+                } else if (operation == 2) {
                     // Read single post
                     int idx = gen() % stored_post_ids.size();
                     int64_t post_id = stored_post_ids[idx];
+                    // int64_t post_id = stored_post_ids[0];
                     Post result;
                     
-                    client.ReadPost(result, thread_id * 100000 + i, post_id, carrier);
+                    client.ReadPost(result, thread_id * 1000000 + i, post_id, carrier);
                     global_metrics.read_operations++;
                     
                     if (verbose && i % 100 == 0) {
@@ -185,31 +258,21 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                     
                 } else {
                     // Read multiple posts
-                    int count = std::min(post_count_dist(gen), (int)stored_post_ids.size());
-                    std::vector<int64_t> post_ids;
-                    //std::set<int64_t> unique_ids;
-    
-                    //while (unique_ids.size() < count) {
-                    //    int idx = gen() % stored_post_ids.size();
-                    //    unique_ids.insert(stored_post_ids[idx]);
-                    //}
-
-                    //std::vector<int64_t> post_ids(unique_ids.begin(), unique_ids.end());
+                    int count = 3;
                     
-                    //for (int j = 0; j < count; j++) {
-                    //    int idx = gen() % stored_post_ids.size();
-                    //    post_ids.push_back(stored_post_ids[idx]);
-                    //}
-                    // Sequential access
-                    int start_idx = gen() % stored_post_ids.size();
-
-                    for (int j = 0; j < count; j++) {
-                        int idx = (start_idx + j) % stored_post_ids.size();
-                        post_ids.push_back(stored_post_ids[idx]);
+                    std::set<int> unique_indices;
+                    while (unique_indices.size() < (uint) count && unique_indices.size() < stored_post_ids.size()) {
+                       int idx = gen() % stored_post_ids.size();
+                       unique_indices.insert(idx);
                     }
-                    
+
+                    std::vector<int64_t> post_ids;
+                    for (int idx : unique_indices) {
+                       post_ids.push_back(stored_post_ids[idx]);
+                    }
+
                     std::vector<Post> results;
-                    client.ReadPosts(results, thread_id * 100000 + i, post_ids, carrier);
+                    client.ReadPosts(results, thread_id * 1000000 + i, post_ids, carrier);
                     global_metrics.read_multi_operations++;
                     
                     if (verbose && i % 100 == 0) {
@@ -234,6 +297,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                 if (verbose) {
                     std::cerr << "Thread " << thread_id << " - Operation " << i 
                               << " failed: " << e.what() << std::endl;
+                    // return;  // Exit on error
                 }
             }
         }
@@ -315,7 +379,7 @@ int main(int argc, char* argv[]) {
     int server_port = 9091;
     int num_threads = 4;
     int operations_per_thread = 500;
-    int warmup_operations = 1;
+    int warmup_operations = 10;
     bool verbose = false;
     
     // Parse command line arguments
@@ -337,6 +401,12 @@ int main(int argc, char* argv[]) {
             print_usage(argv[0]);
             return 0;
         }
+    }
+
+    // Check warmup operations
+    if (warmup_operations == 0) {
+        warmup_operations = 10;
+        std::cout << "<Warning>: Warmup cannot be 0, set to default 10" << std::endl;
     }
     
     std::cout << "=== PostStorage Service Client Test ===" << std::endl;

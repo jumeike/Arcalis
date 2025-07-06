@@ -6,6 +6,9 @@
  */
 #include "PostStorageService.h"
 
+#ifdef ENABLE_GEM5
+#include "../src/PostStorageService/server/PostStorageHandler.h"
+#endif
 namespace social_network {
 
 
@@ -15,6 +18,47 @@ PostStorageService_StorePost_args::~PostStorageService_StorePost_args() noexcept
 PostStorageService_StorePost_args::PostStorageService_StorePost_args() noexcept
    : req_id(0) {
 }
+
+#ifdef ENABLE_GEM5
+// StorePost
+PostStorageService_StorePost_args::PostStorageService_StorePost_args(const PostStorageService_StorePost_args& other)
+   : req_id(other.req_id), post(other.post), carrier(other.carrier) {}
+
+PostStorageService_StorePost_args& PostStorageService_StorePost_args::operator=(const PostStorageService_StorePost_args& other) {
+   if (this != &other) {
+       req_id = other.req_id;
+       post = other.post;
+       carrier = other.carrier;
+   }
+   return *this;
+}
+
+// ReadPost
+PostStorageService_ReadPost_args::PostStorageService_ReadPost_args(const PostStorageService_ReadPost_args& other)
+   : req_id(other.req_id), post_id(other.post_id), carrier(other.carrier) {}
+
+PostStorageService_ReadPost_args& PostStorageService_ReadPost_args::operator=(const PostStorageService_ReadPost_args& other) {
+   if (this != &other) {
+       req_id = other.req_id;
+       post_id = other.post_id;
+       carrier = other.carrier;
+   }
+   return *this;
+}
+
+// ReadPosts
+PostStorageService_ReadPosts_args::PostStorageService_ReadPosts_args(const PostStorageService_ReadPosts_args& other)
+   : req_id(other.req_id), post_ids(other.post_ids), carrier(other.carrier) {}
+
+PostStorageService_ReadPosts_args& PostStorageService_ReadPosts_args::operator=(const PostStorageService_ReadPosts_args& other) {
+   if (this != &other) {
+       req_id = other.req_id;
+       post_ids = other.post_ids;
+       carrier = other.carrier;
+   }
+   return *this;
+}
+#endif //ENABLE_GEM5
 
 uint32_t PostStorageService_StorePost_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -162,6 +206,19 @@ PostStorageService_StorePost_result::~PostStorageService_StorePost_result() noex
 PostStorageService_StorePost_result::PostStorageService_StorePost_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+// StorePost
+PostStorageService_StorePost_result::PostStorageService_StorePost_result(const PostStorageService_StorePost_result& other)
+   : se(other.se), __isset(other.__isset) {}
+
+PostStorageService_StorePost_result& PostStorageService_StorePost_result::operator=(const PostStorageService_StorePost_result& other) {
+   if (this != &other) {
+       se = other.se;
+       __isset = other.__isset;
+   }
+   return *this;
+}
+#endif
 uint32_t PostStorageService_StorePost_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -420,6 +477,20 @@ PostStorageService_ReadPost_result::~PostStorageService_ReadPost_result() noexce
 PostStorageService_ReadPost_result::PostStorageService_ReadPost_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+// ReadPost
+PostStorageService_ReadPost_result::PostStorageService_ReadPost_result(const PostStorageService_ReadPost_result& other)
+   : success(other.success), se(other.se), __isset(other.__isset) {}
+
+PostStorageService_ReadPost_result& PostStorageService_ReadPost_result::operator=(const PostStorageService_ReadPost_result& other) {
+   if (this != &other) {
+       success = other.success;
+       se = other.se;
+       __isset = other.__isset;
+   }
+   return *this;
+}
+#endif
 uint32_t PostStorageService_ReadPost_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -725,6 +796,20 @@ PostStorageService_ReadPosts_result::~PostStorageService_ReadPosts_result() noex
 PostStorageService_ReadPosts_result::PostStorageService_ReadPosts_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+// ReadPosts
+PostStorageService_ReadPosts_result::PostStorageService_ReadPosts_result(const PostStorageService_ReadPosts_result& other)
+   : success(other.success), se(other.se), __isset(other.__isset) {}
+
+PostStorageService_ReadPosts_result& PostStorageService_ReadPosts_result::operator=(const PostStorageService_ReadPosts_result& other) {
+   if (this != &other) {
+       success = other.success;
+       se = other.se;
+       __isset = other.__isset;
+   }
+   return *this;
+}
+#endif
 uint32_t PostStorageService_ReadPosts_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -1083,6 +1168,114 @@ bool PostStorageServiceProcessor::dispatchCall(::apache::thrift::protocol::TProt
   return true;
 }
 
+#ifdef ENABLE_GEM5
+bool PostStorageServiceProcessor::process(
+   std::shared_ptr<apache::thrift::protocol::TProtocol> in,
+   std::shared_ptr<apache::thrift::protocol::TProtocol> out,
+   void* connectionContext) {
+   auto& bl = std::dynamic_pointer_cast<PostStorageHandler>(iface_)->business_logic_;
+   bl->runLoop(this, in, out, connectionContext);
+   return true;
+}
+
+void PostStorageServiceProcessor::process_StorePost(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext) {
+   void* ctx = nullptr;
+   if (this->eventHandler_.get() != nullptr) {
+       ctx = this->eventHandler_->getContext("PostStorageService.StorePost", callContext);
+   }
+   ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "PostStorageService.StorePost");
+
+   auto& bl = std::dynamic_pointer_cast<PostStorageHandler>(iface_)->business_logic_;
+   bl->ctx_ = ctx;
+
+   PostStorageService_StorePost_result result;
+   try {
+       iface_->StorePost(bl->store_args_.req_id, bl->store_args_.post, bl->store_args_.carrier);
+   } catch (ServiceException &se) {
+       result.se = se;
+       result.__isset.se = true;
+   } catch (const std::exception& e) {
+       if (this->eventHandler_.get() != nullptr) {
+           this->eventHandler_->handlerError(ctx, "PostStorageService.StorePost");
+       }
+       ::apache::thrift::TApplicationException x(e.what());
+       oprot->writeMessageBegin("StorePost", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+       x.write(oprot);
+       oprot->writeMessageEnd();
+       oprot->getTransport()->writeEnd();
+       oprot->getTransport()->flush();
+       return;
+   }
+
+   bl->store_result_ = result; // Store result for callSWwrite()
+}
+
+void PostStorageServiceProcessor::process_ReadPost(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext) {
+   void* ctx = nullptr;
+   if (this->eventHandler_.get() != nullptr) {
+       ctx = this->eventHandler_->getContext("PostStorageService.ReadPost", callContext);
+   }
+   ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "PostStorageService.ReadPost");
+
+   auto& bl = std::dynamic_pointer_cast<PostStorageHandler>(iface_)->business_logic_;
+   bl->ctx_ = ctx;
+
+   PostStorageService_ReadPost_result result;
+   try {
+       iface_->ReadPost(result.success, bl->read_args_.req_id, bl->read_args_.post_id, bl->read_args_.carrier);
+       result.__isset.success = true;
+   } catch (ServiceException &se) {
+       result.se = se;
+       result.__isset.se = true;
+   } catch (const std::exception& e) {
+       if (this->eventHandler_.get() != nullptr) {
+           this->eventHandler_->handlerError(ctx, "PostStorageService.ReadPost");
+       }
+       ::apache::thrift::TApplicationException x(e.what());
+       oprot->writeMessageBegin("ReadPost", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+       x.write(oprot);
+       oprot->writeMessageEnd();
+       oprot->getTransport()->writeEnd();
+       oprot->getTransport()->flush();
+       return;
+   }
+
+   bl->read_result_ = result; // Store result for callSWwrite()
+}
+
+void PostStorageServiceProcessor::process_ReadPosts(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext) {
+   void* ctx = nullptr;
+   if (this->eventHandler_.get() != nullptr) {
+       ctx = this->eventHandler_->getContext("PostStorageService.ReadPosts", callContext);
+   }
+   ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "PostStorageService.ReadPosts");
+
+   auto& bl = std::dynamic_pointer_cast<PostStorageHandler>(iface_)->business_logic_;
+   bl->ctx_ = ctx;
+
+   PostStorageService_ReadPosts_result result;
+   try {
+       iface_->ReadPosts(result.success, bl->read_posts_args_.req_id, bl->read_posts_args_.post_ids, bl->read_posts_args_.carrier);
+       result.__isset.success = true;
+   } catch (ServiceException &se) {
+       result.se = se;
+       result.__isset.se = true;
+   } catch (const std::exception& e) {
+       if (this->eventHandler_.get() != nullptr) {
+           this->eventHandler_->handlerError(ctx, "PostStorageService.ReadPosts");
+       }
+       ::apache::thrift::TApplicationException x(e.what());
+       oprot->writeMessageBegin("ReadPosts", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+       x.write(oprot);
+       oprot->writeMessageEnd();
+       oprot->getTransport()->writeEnd();
+       oprot->getTransport()->flush();
+       return;
+   }
+
+   bl->read_posts_result_ = result; // Store result for callSWwrite()
+}
+#else
 void PostStorageServiceProcessor::process_StorePost(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = nullptr;
@@ -1259,7 +1452,7 @@ void PostStorageServiceProcessor::process_ReadPosts(int32_t seqid, ::apache::thr
   ::std::shared_ptr< ::apache::thrift::TProcessor > processor(new PostStorageServiceProcessor(handler));
   return processor;
 }
-
+#endif //ENABLE_GEM5
 void PostStorageServiceConcurrentClient::StorePost(const int64_t req_id, const Post& post, const std::map<std::string, std::string> & carrier)
 {
   int32_t seqid = send_StorePost(req_id, post, carrier);

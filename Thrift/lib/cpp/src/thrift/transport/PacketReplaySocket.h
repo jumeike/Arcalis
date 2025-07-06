@@ -39,7 +39,7 @@ struct aligned_allocator {
 
 class PacketReplaySocket {
 private:
-    static constexpr size_t FIXED_BUFFER_SIZE = 64 * 1024 * 1024; // 64MB
+    static constexpr size_t FIXED_BUFFER_SIZE = 128 * 1024 * 1024; // 128MB
 
     uint8_t* raw_recv_buf_;
     uint8_t* raw_resp_buf_;
@@ -102,7 +102,7 @@ public:
         // Check if EOF reached
         if (read_pos_ >= recv_data_size_) {
             eof_reached_ = true;
-            //std::cout << "End of replay file reached. Set EOF flag.\n";
+            // std::cout << "End of replay file reached. Set EOF flag.\n";
         } 
     }
 
@@ -132,15 +132,15 @@ public:
         std::vector<uint8_t> raw_data(file_size);
         file.read(reinterpret_cast<char*>(raw_data.data()), file_size);
 
-        convertToAlignedFormat(raw_data, max_requests);
-
-        //std::cout << "Loaded trace from " << filename << ": " << recv_data_size_ << " bytes" << std::endl;
-        //std::cout << "Aligned RPC data address: 0x" << std::hex
-        //           << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
-
         // Touch only the pages we'll actually use
         touchAllPages(recv_buf_, recv_data_size_);
         touchAllPages(resp_buf_, estimateRespSize(max_requests));
+
+        convertToAlignedFormat(raw_data, max_requests);
+
+        std::cout << "Loaded trace from " << filename << ": " << recv_data_size_ << " bytes" << std::endl;
+        std::cout << "Aligned RPC data address: 0x" << std::hex
+                  << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
     }
 
     bool validateReplay(const std::string& expected_file) {
@@ -165,14 +165,14 @@ public:
             uint16_t resp_size = *reinterpret_cast<uint16_t*>(resp_buf_ + resp_pos + 8);
             uint16_t exp_size = *reinterpret_cast<uint16_t*>(expected_data.data() + exp_pos + 16); // Fix: BasicHeader size field offset
 
-            //printf("JU:JU Entry %d - resp_size: %u, exp_size: %u\n", entry_count, resp_size, exp_size);
+            // printf("JU:JU Entry %d - resp_size: %u, exp_size: %u\n", entry_count, resp_size, exp_size);
 
-            //printf("JU:JU Entry %d First 20 raw bytes:\n", entry_count);
-            //printf("  resp: ");
-            //for(int i=0; i<20; i++) printf("%02x ", resp_buf_[resp_pos + i]);
-            //printf("\n  exp:  ");
-            //for(int i=0; i<20; i++) printf("%02x ", expected_data[exp_pos + i]);
-            //printf("\n");
+            // printf("JU:JU Entry %d First 30 raw bytes:\n", entry_count);
+            // printf("  resp: ");
+            // for(int i=0; i<30; i++) printf("%02x ", resp_buf_[resp_pos + i]);
+            // printf("\n  exp:  ");
+            // for(int i=0; i<30; i++) printf("%02x ", expected_data[exp_pos + i]);
+            // printf("\n");
 
             if (resp_size != exp_size) {
                 printf("JU:JU Size mismatch at entry %d\n", entry_count);
@@ -195,6 +195,8 @@ public:
 
     uint32_t read(uint8_t* buf, uint32_t max_len) {
         if (read_pos_ + sizeof(uint64_t) + sizeof(uint16_t) > recv_data_size_) {
+            std::cout << "JU: JU Read position " << read_pos_ 
+                      << " exceeds data size " << recv_data_size_ << ". EOF reached.\n";
             std::cout << "No more data to read.\n";
             return 0;
         }
@@ -211,8 +213,13 @@ public:
         // Check if EOF reached
         if (read_pos_ >= recv_data_size_) {
             eof_reached_ = true;
-            //std::cout << "End of replay file reached. Set EOF flag.\n";
+            // std::cout << "End of replay file reached. Set EOF flag.\n";
         } 
+
+        // std::cout << "JU:JU Read " << copy_len << " bytes from request buffer at position "
+        //           << read_pos_ << ", total size: " << recv_data_size_ << ", address: "
+        //           << std::hex << reinterpret_cast<uintptr_t>(recv_buf_ + read_pos_)
+        //           << std::dec << std::endl;
         
        return copy_len;
     }
@@ -233,6 +240,11 @@ public:
         write_pos_ += total_size;
         write_pos_ = (write_pos_ + 63) & ~63;
         resp_data_size_ = write_pos_;
+
+        // std::cout << "JU:JU Wrote " << len << " bytes to response buffer at position "
+        //           << write_pos_ << ", total size: " << resp_data_size_ << " address: "
+        //           << std::hex << reinterpret_cast<uintptr_t>(resp_buf_ + write_pos_)
+        //           << std::dec << std::endl;
 
         return len;
     }
@@ -275,6 +287,12 @@ private:
             aligned_pos += sizeof(uint64_t) + sizeof(uint16_t) + header->size;
             aligned_pos = (aligned_pos + 63) & ~63;  // 64-byte align
             request_count++;
+            // std::cout << "JU:JU Converted request " << request_count 
+            //           << " to aligned format, size: " << header->size 
+            //           << ", total aligned size: " << aligned_pos 
+            //           << ", address: 0x" << std::hex 
+            //           << reinterpret_cast<uintptr_t>(recv_buf_ + aligned_pos) 
+            //           << std::dec << std::endl;
         }
 
         recv_data_size_ = aligned_pos;

@@ -261,15 +261,16 @@ void PostStorageBusinessLogic::callEngineSendresp(bool success) {
     size_t response_len = 0;
     
     if (handler_->operation_type_ == 0) {
-        response_len = sizeof(bool); // StorePost returns success
+      // StorePost returns nothing
     } else if (handler_->operation_type_ == 1) {
-        response_len = sizeof(int64_t); // ReadPost returns post_id
+        response_len = resp_buf_size_; // ReadPost returns serialized Post
     } else if (handler_->operation_type_ == 2) {
-        response_len = sizeof(int32_t); // ReadPosts returns count
+        response_len = resp_buf_size_; // ReadPosts returns serialized collection of Posts
     }
     
-    response |= (success ? 1ULL : 0ULL) << 4;
-    response |= (response_len & 0x7FF) << 5;
+    response |= (handler_->operation_type_ & 0xF) << 4; // operation type
+    response |= (success ? 1ULL : 0ULL) << 8; // success flag
+    response |= (response_len & 0x7FF) << 9; // length of response data
     
     uint64_t cmd = response | cmd_send_app_resp;
     *sendAddress = cmd;
@@ -350,15 +351,163 @@ void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* proce
     LOG(info) << "JU:JU Finished PostStorage business logic runLoop";
     LOG(info) << "JU:JU =========================================";
 }
+#ifdef ENABLE_CEREBELLUM
+void PostStorageBusinessLogic::serializePostToResponse(const Post& post) {
+  uint8_t* buf = resp_buf_;
+  size_t offset = 0;
+  
+  // Write Post fields in same order as StorePost
+  writeInt64ToBuffer(buf, offset, post.post_id);
+  writeInt64ToBuffer(buf, offset, post.creator.user_id);
+  writeStringToBuffer(buf, offset, post.creator.username);
+  writeInt64ToBuffer(buf, offset, post.req_id);
+  writeStringToBuffer(buf, offset, post.text);
+  
+  // Write user_mentions vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.user_mentions.size()));
+  for (const auto& mention : post.user_mentions) {
+      writeInt64ToBuffer(buf, offset, mention.user_id);
+      writeStringToBuffer(buf, offset, mention.username);
+  }
+  
+  // Write media vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.media.size()));
+  for (const auto& media : post.media) {
+      writeInt64ToBuffer(buf, offset, media.media_id);
+      writeStringToBuffer(buf, offset, media.media_type);
+  }
+  
+  // Write urls vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.urls.size()));
+  for (const auto& url : post.urls) {
+      writeStringToBuffer(buf, offset, url.shortened_url);
+      writeStringToBuffer(buf, offset, url.expanded_url);
+  }
+  
+  writeInt64ToBuffer(buf, offset, post.timestamp);
+  writeInt32ToBuffer(buf, offset, post.post_type);
 
+  // Set the response size
+  resp_buf_size_ = offset;
+  LOG_DEBUG(debug) << "Serialized Post to response buffer, size: " << resp_buf_size_;
+}
+
+void PostStorageBusinessLogic::serializePostsToResponse(const std::vector<Post>& posts) {
+  uint8_t* buf = resp_buf_;
+  size_t offset = 0;
+  const size_t CACHE_LINE_SIZE = 64;
+  const size_t POST_SIZE = 288; // Serialized post size
+  const size_t CACHE_LINES_PER_POST = (POST_SIZE + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE; // 5 cache lines
+  
+  for (const auto& post : posts) {
+      // Serialize post at current offset
+      serializePostAtOffset(buf, offset, post);
+      
+      // Move to next cache line aligned address
+      offset = CACHE_LINES_PER_POST * CACHE_LINE_SIZE;
+      if (&post != &posts.back()) { // Not the last post
+          // Align to next cache line boundary for next post
+          buf += CACHE_LINES_PER_POST * CACHE_LINE_SIZE;
+          offset = 0;
+      }
+  }
+  // Set the response size
+  resp_buf_size_ = posts.size() * CACHE_LINES_PER_POST * CACHE_LINE_SIZE;
+}
+
+void PostStorageBusinessLogic::serializePostAtOffset(uint8_t* buf, size_t base_offset, const Post& post) {
+  size_t offset = base_offset;
+  
+  // Serialize Post fields in same order as ReadPost
+  writeInt64ToBuffer(buf, offset, post.post_id);
+  writeInt64ToBuffer(buf, offset, post.creator.user_id);
+  writeStringToBuffer(buf, offset, post.creator.username);
+  writeInt64ToBuffer(buf, offset, post.req_id);
+  writeStringToBuffer(buf, offset, post.text);
+  
+  // Write user_mentions vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.user_mentions.size()));
+  for (const auto& mention : post.user_mentions) {
+      writeInt64ToBuffer(buf, offset, mention.user_id);
+      writeStringToBuffer(buf, offset, mention.username);
+  }
+
+  // Write media vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.media.size()));
+  for (const auto& media : post.media) {
+      writeInt64ToBuffer(buf, offset, media.media_id);
+      writeStringToBuffer(buf, offset, media.media_type);
+  }
+  
+  // Write urls vector
+  writeInt32ToBuffer(buf, offset, static_cast<int32_t>(post.urls.size()));
+  for (const auto& url : post.urls) {
+      writeStringToBuffer(buf, offset, url.shortened_url);
+      writeStringToBuffer(buf, offset, url.expanded_url);
+  }
+  
+  writeInt64ToBuffer(buf, offset, post.timestamp);
+  writeInt32ToBuffer(buf, offset, post.post_type);
+}
+#endif // ENABLE_CEREBELLUM
 void PostStorageBusinessLogic::StorePost() {
     auto start_time = std::chrono::high_resolution_clock::now();
-    // Read request from recv_buf
+
+#ifdef ENABLE_CEREBELLUM
+    // For Cerebellum, we deserialize Post object from recv_buf_
+    uint8_t* buf = recv_buf_;
+    size_t offset = 0;
+    
+    int64_t req_id = readInt64(buf, offset);
+    int32_t operation_type = readInt32(buf, offset);
+    
+    // Deserialize Post
+    Post post;
+    post.post_id = readInt64(buf, offset);
+    post.creator.user_id = readInt64(buf, offset);
+    post.creator.username = readString(buf, offset);
+    post.req_id = readInt64(buf, offset);
+    post.text = readString(buf, offset);
+    
+    // Read user_mentions
+    int32_t mentions_size = readInt32(buf, offset);
+    post.user_mentions.clear();
+    for (int i = 0; i < mentions_size; i++) {
+        UserMention mention;
+        mention.user_id = readInt64(buf, offset);
+        mention.username = readString(buf, offset);
+        post.user_mentions.push_back(mention);
+    }
+    
+    // Read media
+    int32_t media_size = readInt32(buf, offset);
+    post.media.clear();
+    for (int i = 0; i < media_size; i++) {
+        Media media;
+        media.media_id = readInt64(buf, offset);
+        media.media_type = readString(buf, offset);
+        post.media.push_back(media);
+    }
+    
+    // Read urls
+    int32_t urls_size = readInt32(buf, offset);
+    post.urls.clear();
+    for (int i = 0; i < urls_size; i++) {
+        Url url;
+        url.shortened_url = readString(buf, offset);
+        url.expanded_url = readString(buf, offset);
+        post.urls.push_back(url);
+    }
+    
+    post.timestamp = readInt64(buf, offset);
+    post.post_type = static_cast<PostType::type>(readInt32(buf, offset));
+#else
+    // For non-Cerebellum, we read Post object directly from recv_buf_
     uint8_t* buf = recv_buf_;
     int64_t req_id = *reinterpret_cast<int64_t*>(buf);
     int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
-    Post post = *reinterpret_cast<Post*>(buf + 12); // Assuming Post is packed
-
+    Post post = *reinterpret_cast<Post*>(buf + 12);
+#endif // ENABLE_CEREBELLUM
     bool operation_success = false;
     try {
         // Call original StorePost logic with MongoDB
@@ -390,9 +539,11 @@ void PostStorageBusinessLogic::ReadPost() {
 
     // Read request from recv_buf
     uint8_t* buf = recv_buf_;
-    int64_t req_id = *reinterpret_cast<int64_t*>(buf);
-    int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
-    int64_t post_id = *reinterpret_cast<int64_t*>(buf + 12);
+    size_t offset = 0;
+
+    int64_t req_id = readInt64(buf, offset);
+    int32_t operation_type = readInt32(buf, offset);
+    int64_t post_id = readInt64(buf, offset);
 
     bool operation_success = false;
     try {
@@ -401,8 +552,13 @@ void PostStorageBusinessLogic::ReadPost() {
         std::map<std::string, std::string> empty_carrier;
         ReadPost(retrieved_post, req_id, post_id, empty_carrier);
 
-        // Write result to resp_buf 
+#ifdef ENABLE_CEREBELLUM
+        // For Cerebellum, Serialize result to resp_buf instead of direct copy
+        serializePostToResponse(retrieved_post);
+#else
+        // For non-Cerebellum, we can directly copy the Post object
         *reinterpret_cast<Post*>(resp_buf_) = retrieved_post;
+#endif // ENABLE_CEREBELLUM
         operation_success = true;
 
     } catch (const std::exception& e) {
@@ -427,14 +583,16 @@ void PostStorageBusinessLogic::ReadPosts() {
 
     // Read request from recv_buf
     uint8_t* buf = recv_buf_;
-    int64_t req_id = *reinterpret_cast<int64_t*>(buf);
-    int32_t operation_type = *reinterpret_cast<int32_t*>(buf + 8);
-    int32_t post_count = *reinterpret_cast<int32_t*>(buf + 12);
+    size_t offset = 0;
+    
+    int64_t req_id = readInt64(buf, offset);
+    int32_t operation_type = readInt32(buf, offset);
+    int32_t post_count = readInt32(buf, offset);
     
     // Read post_ids array
     std::vector<int64_t> post_ids;
     for (int i = 0; i < post_count; i++) {
-        post_ids.push_back(*reinterpret_cast<int64_t*>(buf + 16 + i * 8));
+        post_ids.push_back(readInt64(buf, offset));
     }
 
     bool operation_success = false;
@@ -444,6 +602,11 @@ void PostStorageBusinessLogic::ReadPosts() {
         std::map<std::string, std::string> empty_carrier;
         ReadPosts(retrieved_posts, req_id, post_ids, empty_carrier);
 
+#ifdef ENABLE_CEREBELLUM
+        // For Cerebellum, Serialize results to resp_buf instead of direct copy
+        serializePostsToResponse(retrieved_posts);
+#else
+        // For non-Cerebellum, we can directly copy the vector of Posts
         // Write count at the start of resp_buf leads to segmentation fault
         // *reinterpret_cast<int32_t*>(resp_buf_) = retrieved_posts.size();
 
@@ -455,6 +618,7 @@ void PostStorageBusinessLogic::ReadPosts() {
         }
         // Write count at the end
         *reinterpret_cast<int32_t*>(resp_buf_ + resp_buf_offset_) = retrieved_posts.size();
+#endif // ENABLE_CEREBELLUM
         operation_success = true;
 
     } catch (const std::exception& e) {

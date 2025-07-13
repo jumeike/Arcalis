@@ -116,6 +116,7 @@ class PostStorageBusinessLogic {
   uint8_t* recv_buf_;    // Receive Buffer
   uint8_t* resp_buf_;    // Response Buffer
   size_t resp_buf_offset_;
+  size_t resp_buf_size_;
 
   uint8_t* allocateAlignedBuffer(uint8_t* raw_buf);
   bool initializeBuffers();
@@ -165,6 +166,25 @@ class PostStorageBusinessLogic {
             std::shared_ptr<::apache::thrift::protocol::TProtocol> in,
             std::shared_ptr<::apache::thrift::protocol::TProtocol> out,
             void* connectionContext); 
+  // Helper functions for software deserialization
+  int32_t readInt32(uint8_t* buf, size_t& offset) {
+    int32_t value = *reinterpret_cast<int32_t*>(buf + offset);
+    offset += 4;
+    return value;
+  }
+
+  int64_t readInt64(uint8_t* buf, size_t& offset) {
+    int64_t value = *reinterpret_cast<int64_t*>(buf + offset);
+    offset += 8;
+    return value;
+  }
+
+  std::string readString(uint8_t* buf, size_t& offset) {
+    int32_t length = readInt32(buf, offset);
+    std::string str(reinterpret_cast<char*>(buf + offset), length);
+    offset += length;
+    return str;
+  }
 #endif // ENABLE_GEM5  
 
 #ifdef ENABLE_CEREBELLUM
@@ -181,6 +201,28 @@ class PostStorageBusinessLogic {
          sendAddress = sAddress;
          readAddress = rAddress;
      }
+
+  // Helper functions for writing to response buffer
+  void serializePostToResponse(const Post& post);
+  void serializePostsToResponse(const std::vector<Post>& posts);
+  void serializePostAtOffset(uint8_t* buf, size_t base_offset, const Post& post);
+
+  void writeInt32ToBuffer(uint8_t* buf, size_t& offset, int32_t value) {
+      *reinterpret_cast<int32_t*>(buf + offset) = value;
+      offset += 4;
+  }
+
+  void writeInt64ToBuffer(uint8_t* buf, size_t& offset, int64_t value) {
+      *reinterpret_cast<int64_t*>(buf + offset) = value;
+      offset += 8;
+  }
+
+  void writeStringToBuffer(uint8_t* buf, size_t& offset, const std::string& str) {
+      // Write length then data
+      writeInt32ToBuffer(buf, offset, static_cast<int32_t>(str.size()));
+      memcpy(buf + offset, str.data(), str.size());
+      offset += str.size();
+  }
 #endif // ENABLE_CEREBELLUM
 };
 } // namespace social_network

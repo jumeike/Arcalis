@@ -62,7 +62,8 @@ public:
 private:
     DPDKHandler() = default;
     ~DPDKHandler() { cleanup(); }
-
+        
+    void printStats();
     void pollLoop();
     bool setupDPDKPort();
     struct rte_mempool* createMempool();

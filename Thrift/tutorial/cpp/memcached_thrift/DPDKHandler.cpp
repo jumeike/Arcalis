@@ -15,8 +15,9 @@ bool DPDKHandler::init(uint16_t port_id) {
         "-l", "0-1",              // Use CPU cores 0-1
         "-n", "4",                // Number of memory channels
         "--proc-type=auto",       // Process type
+        "-a", "0000:81:00.0",	    // Specify Interface
         "--log-level", "8",       // Debug log level
-        NULL
+       NULL
     };
     int argc = sizeof(argv) / sizeof(argv[0]) - 1;  // -1 for NULL terminator
     // Initialize EAL
@@ -45,8 +46,11 @@ bool DPDKHandler::init(uint16_t port_id) {
 struct rte_mempool* DPDKHandler::createMempool() {
   unsigned nb_ports = rte_eth_dev_count_avail();
   if (nb_ports == 0) {
+    printf("No suitable NICs found; check driver binding and DPDK "
+                    "linking options\n");
     return nullptr;
   }
+  printf("nb_ports found is %d\n", nb_ports);
   char pool_name[64];
   int socket_id = rte_socket_id();
 
@@ -79,6 +83,10 @@ bool DPDKHandler::setupDPDKPort() {
   portConf_.txmode.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |
                                             RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
 
+  printf("Port %u driver: %s\n", portId_, devInfo_.driver_name);
+  printf("Port %u max RX queues: %u, max TX queues: %u\n",
+         portId_, devInfo_.max_rx_queues, devInfo_.max_tx_queues);
+
   // Configure device
   int ret = rte_eth_dev_configure(portId_, 1, 1, &portConf_);
   if (ret != 0) {
@@ -92,6 +100,15 @@ bool DPDKHandler::setupDPDKPort() {
   if (ret != 0) {
     return false;
   }
+
+ printf("Port %u MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+     portId_,
+     addr.addr_bytes[0],
+     addr.addr_bytes[1],
+     addr.addr_bytes[2],
+     addr.addr_bytes[3],
+     addr.addr_bytes[4],
+     addr.addr_bytes[5]);
 
   // Setup RX queue
   ret = rte_eth_rx_queue_setup(portId_,
@@ -204,11 +221,28 @@ void DPDKHandler::handleArpPacket(struct rte_mbuf* m) {
     }
 }
 
+void DPDKHandler::printStats() {
+    struct rte_eth_stats stats;
+    rte_eth_stats_get(portId_, &stats);
+    printf("Port %d stats:\n", portId_);
+    printf("  RX packets: %lu, bytes: %lu\n", stats.ipackets, stats.ibytes);
+    printf("  TX packets: %lu, bytes: %lu\n", stats.opackets, stats.obytes);
+    printf("  RX errors: %lu, missed: %lu\n", stats.ierrors, stats.imissed);
+}
+
 void DPDKHandler::pollLoop() {
     auto& logger = PacketLogger::getInstance();
+    
+    //int poll_count = 0;
     while (running_) {
         struct rte_mbuf* pkts[1];
-        const uint16_t nb_rx = rte_eth_rx_burst(portId_, 0, pkts, 1);
+        const uint16_t nb_rx = rte_eth_rx_burst(portId_, 0, pkts, 64);
+        
+        //if (nb_rx > 0 ) printf("nb_rx: %d\n", nb_rx);
+        // Add periodic status check
+        //if (++poll_count % 10000 == 0) {
+        //    printStats();
+        //}        
         
         for (uint16_t i = 0; i < nb_rx; i++) {
             struct rte_mbuf* pkt = pkts[i];
@@ -227,7 +261,7 @@ void DPDKHandler::pollLoop() {
 
             // Skip non-IPv4 packets
             if (ether_type != RTE_ETHER_TYPE_IPV4) {
-                fprintf(stderr, "Debug: found non-IPv4 packets\n");
+                //fprintf(stderr, "Debug: found non-IPv4 packets\n");
                 rte_pktmbuf_free(pkt);
                 continue;
             }
@@ -237,7 +271,7 @@ void DPDKHandler::pollLoop() {
 
             // Skip non-UDP packets
             if (ip_hdr->next_proto_id != IPPROTO_UDP) {
-                fprintf(stderr, "Debug: found non-UDP packet\n");
+                //fprintf(stderr, "Debug: found non-UDP packet\n");
                 rte_pktmbuf_free(pkt);
                 continue;
             }
@@ -260,9 +294,9 @@ void DPDKHandler::pollLoop() {
             }             
             
             // Call callback with payload
-//            if (packetCallback_) {
-//                packetCallback_(payload, payload_len);
-//            }
+            // if (packetCallback_) {
+                // packetCallback_(payload, payload_len);
+            // }
 
             // Copy to shared memory
             pthread_mutex_lock(&shared_mem_->rx_buffer.mutex);
@@ -339,14 +373,14 @@ bool DPDKHandler::sendData(const uint8_t* data, uint32_t len) {
     // For now using broadcast
     // memset(&eth_hdr->dst_addr, 0xff, RTE_ETHER_ADDR_LEN);
     // Set destination MAC directly
-    // Converting 0c:42:a1:cc:83:82 to bytes
-    eth_hdr->dst_addr.addr_bytes[0] = 0x0c;
-    eth_hdr->dst_addr.addr_bytes[1] = 0x42;
-    eth_hdr->dst_addr.addr_bytes[2] = 0xa1;
-    eth_hdr->dst_addr.addr_bytes[3] = 0xcc;
-    eth_hdr->dst_addr.addr_bytes[4] = 0x83;
-    eth_hdr->dst_addr.addr_bytes[5] = 0x82;
-  
+    // b8:ce:f6:d2:3a:ca
+    eth_hdr->dst_addr.addr_bytes[0] = 0xb8;
+    eth_hdr->dst_addr.addr_bytes[1] = 0xce;
+    eth_hdr->dst_addr.addr_bytes[2] = 0xf6;
+    eth_hdr->dst_addr.addr_bytes[3] = 0xd2;
+    eth_hdr->dst_addr.addr_bytes[4] = 0x3a;
+    eth_hdr->dst_addr.addr_bytes[5] = 0xca;
+ 
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 
     // IP header

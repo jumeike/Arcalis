@@ -225,8 +225,8 @@ int main(int argc, char **argv) {
     ::std::shared_ptr<TProcessor> processor(new MemcachedServiceProcessor(handler));
     //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket("192.168.1.1", port, true)); // usingKq = true
     //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket("localhost", port));
-    //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
-    ::std::shared_ptr<TServerTransport> serverTransport(new TServerSocket("localhost", port));
+    ::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
+    //::std::shared_ptr<TServerTransport> serverTransport(new TServerSocket("192.168.1.1", port));
     ::std::shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     ::std::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
     // ::std::shared_ptr<TProtocolFactory> protocolFactory(new TJSONProtocolFactory());

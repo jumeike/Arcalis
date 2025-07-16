@@ -623,6 +623,57 @@ public:
         }
         return alignedRpcData;
     }
+
+    void printFirstTenPackets() {
+      static size_t read_pos = 0;
+      uint8_t buffer[4096]; // Buffer to hold packet data, ensure it's large enough
+      int pkt_count = 0;
+      
+      // Print first 10 packets
+      while (pkt_count < 10) {
+          // Check if enough data remains
+          if (read_pos + sizeof(uint64_t) + sizeof(uint16_t) > alignedRpcData.size()) {
+              std::cout << "No more data to read.\n";
+              break;
+          }
+          
+          // Read packet header
+          uint64_t timestamp = *reinterpret_cast<const uint64_t*>(alignedRpcData.data() + read_pos);
+          uint16_t pkt_len = *reinterpret_cast<const uint16_t*>(alignedRpcData.data() + read_pos + sizeof(uint64_t));
+          
+          // Print packet info
+          std::cout << "Packet " << pkt_count + 1 << ":\n";
+          std::cout << "  Timestamp: " << timestamp << "\n";
+          std::cout << "  Length: " << pkt_len << " bytes\n";
+          
+          // Copy and print all packet data
+          std::memcpy(buffer, alignedRpcData.data() + read_pos + sizeof(uint64_t) + sizeof(uint16_t), pkt_len);
+          
+          std::cout << "  Data: ";
+          for (uint32_t i = 0; i < pkt_len; i++) {
+              // Add a newline and indentation every 16 bytes for readability
+              if (i > 0 && i % 16 == 0) {
+                  std::cout << "\n        ";
+              }
+              std::cout << std::hex << std::setw(2) << std::setfill('0') 
+                        << static_cast<int>(buffer[i]) << " ";
+          }
+          std::cout << std::dec << "\n\n";
+          
+          // Update position
+          read_pos += sizeof(uint64_t) + sizeof(uint16_t) + pkt_len;
+          read_pos = (read_pos + 63) & ~63;  // Align for next read
+          
+          // Increment counter
+          pkt_count++;
+          
+          // Check if EOF reached
+          if (read_pos >= alignedRpcData.size()) {
+              std::cout << "End of data reached after " << pkt_count << " packets.\n";
+              break;
+          }
+      }
+    }
     
     uint32_t read(uint8_t* buf, uint32_t max_len) {
         static size_t read_pos = 0;
@@ -3128,6 +3179,7 @@ namespace thrift {
 
         // Align RPC data
         replay_.alignRpcData(rpcData);
+        //replay_.printFirstTenPackets();
         
         // Get same shared memory instance
         // auto& mgr = SharedMemoryManager::getInstance();
@@ -7957,11 +8009,11 @@ public:
    bool handleGet(const std::vector<int8_t>& key, std::vector<int8_t>& value) {
       // Convert key to string for memcached API
       std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
-      // printf("GET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
+//       printf("GET attempt with key size: %zu, key content: ", key.size());
+//       for(size_t i = 0; i < key.size(); i++) {
+//           printf("%02x ", key[i]);
+//       }
+//       printf("\n");
 
       // Get the item directly from cache
       item* it = item_get(key_str.c_str(), key_str.length(), &thread, true);
@@ -7975,11 +8027,11 @@ public:
           value.assign(reinterpret_cast<const int8_t*>(value_ptr),
                       reinterpret_cast<const int8_t*>(value_ptr + value_len));
           
-          // printf("GET attempt with value size: %zu, Value content: ", value.size());
-          // for(size_t i = 0; i < value.size(); i++) {
-          //     printf("%02x ", value[i]);
-          // }
-          // printf("\n"); 
+//           printf("GET attempt with value size: %zu, Value content: ", value.size());
+//           for(size_t i = 0; i < value.size(); i++) {
+//               printf("%02x ", value[i]);
+//           }
+//           printf("\n"); 
 
           // Release our reference
           item_remove(it);
@@ -7995,17 +8047,17 @@ public:
       // Convert key and value to strings for memcached API
       std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
       std::string value_str(reinterpret_cast<const char*>(value.data()), value.size());
-      // printf("SET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
-
-      // printf("SET attempt with value size: %zu, value content: ", value.size());
-      // for(size_t i = 0; i < value.size(); i++) {
-      //     printf("%02x ", value[i]);
-      // }
-      // printf("\n");
+//       printf("SET attempt with key size: %zu, key content: ", key.size());
+//       for(size_t i = 0; i < key.size(); i++) {
+//           printf("%02x ", key[i]);
+//       }
+//       printf("\n");
+//
+//       printf("SET attempt with value size: %zu, value content: ", value.size());
+//       for(size_t i = 0; i < value.size(); i++) {
+//           printf("%02x ", value[i]);
+//       }
+//       printf("\n");
       
       // Allocate new item
       item* it = item_alloc(key_str.c_str(), key_str.length(), 0, 0, value.size());
@@ -9513,14 +9565,14 @@ int main(int argc, char **argv) {
     // auto& logger = PacketLogger::getInstance();
     // logger.initializeLogFiles(".");
 
-    // // Initialize DPDK first
+    // Initialize DPDK first
     // auto& dpdk = DPDKHandler::getInstance();
     // if (!dpdk.init(0)) {
     //     std::cerr << "Failed to initialize DPDK" << std::endl;
     //     return 1;
     // }
 
-    // // Start DPDK polling
+    // Start DPDK polling
     // dpdk.startPolling();
 
     // Load the RPC Data into memory 

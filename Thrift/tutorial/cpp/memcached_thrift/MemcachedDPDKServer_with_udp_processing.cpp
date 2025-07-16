@@ -2,7 +2,6 @@
 #include <memory>
 #include <string> 
 #include <iostream>
-#include <iomanip>
 #include <functional>
 #include <stdexcept>
 #include <stdint.h>
@@ -51,17 +50,13 @@
 #include "gen-cpp/memcached_benchmark_types.h"
 
 // DPDK headers
-//#include <rte_eal.h>
-//#include <rte_ethdev.h>
-//#include <rte_mbuf.h>
-//#include <rte_mempool.h>
-//#include <rte_udp.h>
-//#include <rte_ip.h>
-//#include <rte_ether.h>
-
-#include "DPDKHandler.h"
-#include "shared_buffer.h"
-#include "PacketLogger.h"
+#include <rte_eal.h>
+#include <rte_ethdev.h>
+#include <rte_mbuf.h>
+#include <rte_mempool.h>
+#include <rte_udp.h>
+#include <rte_ip.h>
+#include <rte_ether.h>
 
 // Save thrift package definitions
 #define THRIFT_PACKAGE PACKAGE
@@ -229,6 +224,30 @@ extern "C" {
 // #include <thrift/transport/TTransportException.h>
 // #include <limits>
 
+// includes from TJSONProtocol.h
+// #include <thrift/protocol/TVirtualProtocol.h>
+#include <stack>
+
+
+// includes from TJSONProtocol.cpp
+// #include <thrift/protocol/TJSONProtocol.h>
+#include <boost/locale.hpp>
+// #include <cmath>
+// #include <limits>
+#include <locale>
+// #include <sstream>
+// #include <stdexcept>
+#include <thrift/protocol/TBase64Utils.h>
+// #include <thrift/transport/TTransportException.h>
+#include <thrift/TToString.h>
+
+// includes from TBase64Utils.h
+// #include <stdint.h>
+// #include <string>
+
+// includes from TBase64Utils.cpp
+// #include <thrift/protocol/TBase64Utils.h>
+
 // includes from TProtocol.h
 #ifdef _WIN32
 // Including Winsock2.h adds problematic macros like min() and max().
@@ -252,7 +271,7 @@ extern "C" {
 #undef _THRIFT_UNDEF_WIN32_LEAN_AND_MEAN
 #endif
 #endif
-std::string execution_mode = "file";
+
 // #include <thrift/transport/TTransport.h>
 // #include <thrift/protocol/TProtocolException.h>
 // #include <thrift/protocol/TEnum.h>
@@ -553,84 +572,6 @@ static inline To bitwise_cast(From from) {
 // #include <thrift/thrift-config.h>
 // #include <thrift/concurrency/ThreadFactory.h>
 // #include <memory>
-
-class PacketReplaySocket {
-    std::ifstream replay_file_;
-    std::ofstream response_file_;
-    bool eof_reached_{false};
-    
-public:
-    static PacketReplaySocket& getInstance() {
-      static PacketReplaySocket instance;
-      return instance;
-    }
-
-    bool isEOF() const { return eof_reached_; }
-    
-    uint32_t read(uint8_t* buf, uint32_t max_len) {
-        if (!replay_file_.is_open()) return 0;
-        
-        uint64_t timestamp;
-        uint16_t pkt_len;
-        
-        // Check for EOF before each read
-        if (!replay_file_.read(reinterpret_cast<char*>(&timestamp), sizeof(timestamp)) ||
-            !replay_file_.read(reinterpret_cast<char*>(&pkt_len), sizeof(pkt_len))) {
-            std::cout << "End of replay file reached\n";
-            replay_file_.close();
-            // exit(0);  // Exit the program when replay is complete
-            return 0;
-        }
-        
-        uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(pkt_len));
-        replay_file_.read(reinterpret_cast<char*>(buf), copy_len);
-        // std::cout << "Called read with copy_len: " << copy_len << std::endl;
-        
-        // std::cout << "Replay Read: " << copy_len << " bytes\n";
-        // std::cout << "First 32 bytes: ";
-        // for(uint32_t i = 0; i < std::min(32u, copy_len); i++) {
-        //     printf("%02x ", buf[i]);
-        // }
-        // std::cout << "\nBuffer as int32: " << *(reinterpret_cast<int32_t*>(buf)) << std::endl;
-
-        // Peek next packet to set EOF flag
-        std::streampos current_pos = replay_file_.tellg();
-        if (!replay_file_.read(reinterpret_cast<char*>(&timestamp), sizeof(timestamp))) {
-            eof_reached_ = true;
-            std::cout << "End of replay file reached. Set EOF flag.\n";
-        }
-        replay_file_.seekg(current_pos);
-        
-        return copy_len;
-    }
-    
-    void write(const uint8_t* buf, uint32_t len) {
-        if (!response_file_.is_open()) return;
-        
-        uint64_t timestamp = getCurrentTimestamp();
-        uint16_t length = static_cast<uint16_t>(len);
-        
-        response_file_.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
-        response_file_.write(reinterpret_cast<const char*>(&length), sizeof(length));
-        response_file_.write(reinterpret_cast<const char*>(buf), len);
-        response_file_.flush();
-    }
-
-private:
-    PacketReplaySocket(const std::string& replay_path = "dpdk_to_rpc_100k.log") {
-        replay_file_.open(replay_path, std::ios::binary);
-        response_file_.open("rpc_responses.log", std::ios::binary);
-    }
-
-    uint64_t getCurrentTimestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto now_c = std::chrono::system_clock::to_time_t(now);
-        auto now_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-            now.time_since_epoch()).count() % 1000000;
-        return static_cast<uint64_t>(now_c) * 1000000 + now_ms;
-    }
-};
-
 
 namespace apache {
 namespace thrift {
@@ -1234,7 +1175,7 @@ namespace thrift {
       DPDKResources() 
           : portId(0)
           , mbufPool(nullptr)
-          , isInitialized(true) {
+          , isInitialized(false) {
           memset(&devInfo, 0, sizeof(devInfo));
           memset(&portConf, 0, sizeof(portConf));
       }
@@ -1918,8 +1859,6 @@ namespace thrift {
    *
    */
   class TBufferedTransport : public TVirtualTransport<TBufferedTransport, TBufferBase> {
-  private:
-    //  SharedMemory* shared_mem_;
   public:
     static const int DEFAULT_BUFFER_SIZE = 2048;
 
@@ -1931,15 +1870,6 @@ namespace thrift {
         wBufSize_(DEFAULT_BUFFER_SIZE),
         rBuf_(new uint8_t[rBufSize_]),
         wBuf_(new uint8_t[wBufSize_]) {
-
-    // Initialize shared memory
-    // auto& mgr = SharedMemoryManager::getInstance();
-    // shared_mem_ = mgr.initSharedMemory();
-    // if (!shared_mem_) {
-    //     throw TTransportException(TTransportException::NOT_OPEN,
-    //                             "Could not initialize shared memory");
-    // }
-
       initPointers();
     }
 
@@ -3023,17 +2953,6 @@ namespace thrift {
     struct rte_mempool* createMempool();
     
   private:
-    void handleReceivedData(uint8_t* data, uint32_t len);
-    SharedMemory* shared_mem_ = nullptr;
-
-    // For packet logging and replay
-    PacketReplaySocket& replay_;
-    PacketLogger& logger_;
-    
-    std::vector<uint8_t> rxBuffer_;
-    std::mutex mutex_;
-    std::condition_variable cv_;
-    
     std::string host_;
     int port_;
     bool isInitialized_;
@@ -3058,36 +2977,15 @@ namespace thrift {
 
   TUDPSocket::TUDPSocket(std::shared_ptr<::apache::thrift::TConfiguration> config)
     : TVirtualTransport(config)
-    , replay_(PacketReplaySocket::getInstance())
-    , logger_(PacketLogger::getInstance())
     , port_(0)
     , isInitialized_(false)
     , localIpAddress_(0)
     , sendTimeout_(0)
     , recvTimeout_(0) {
-
-      if (execution_mode == "dpdk") {
-        // Get same shared memory instance
-        auto& mgr = SharedMemoryManager::getInstance();
-        shared_mem_ = mgr.initSharedMemory();
-        if (!shared_mem_) {
-            throw TTransportException(TTransportException::NOT_OPEN,
-                                    "Could not get shared memory in TUDPSocket");
-        }
-        // Get DPDK handler instance
-        // auto& dpdk = DPDKHandler::getInstance();
-
-        // Set callback for received packets
-        //dpdk.setPacketCallback([this](uint8_t* data, uint32_t len) {
-        //    handleReceivedData(data, len);
-        //});
-      }
   }
 
   TUDPSocket::TUDPSocket(const std::string& host, int port, std::shared_ptr<::apache::thrift::TConfiguration> config)
     : TVirtualTransport(config)
-    , replay_(PacketReplaySocket::getInstance())
-    , logger_(PacketLogger::getInstance())
     , host_(host)
     , port_(port)
     , isInitialized_(false)
@@ -3099,8 +2997,6 @@ namespace thrift {
   TUDPSocket::TUDPSocket(std::shared_ptr<DPDKResources> dpdkResources,
                         std::shared_ptr<::apache::thrift::TConfiguration> config)
       : TVirtualTransport(config)
-      , replay_(PacketReplaySocket::getInstance())
-      , logger_(PacketLogger::getInstance())
       , port_(0)
       , localIpAddress_(0)
       , dpdkResources_(dpdkResources)
@@ -3115,10 +3011,19 @@ namespace thrift {
   }
 
   bool TUDPSocket::initDPDK() {
+    // Minimal EAL arguments
+    const char* argv[] = {
+        "thrift-server",           // Program name
+        "-l", "0-1",              // Use CPU cores 0-1
+        "-n", "4",                // Number of memory channels
+        "--proc-type=auto",       // Process type
+        "-a", "0000:81:00.0",	    // Specify Interface
+        "--log-level", "8",       // Debug log level
+        NULL
+    };
+    int argc = sizeof(argv) / sizeof(argv[0]) - 1;  // -1 for NULL terminator
     // Initialize EAL
-    int argc = 0;
-    char **argv = nullptr;
-    int ret = rte_eal_init(argc, argv);
+    int ret = rte_eal_init(argc, (char**)argv);
     if (ret < 0) {
       return false;
     }
@@ -3159,7 +3064,7 @@ namespace thrift {
   bool TUDPSocket::setupDPDKPort() {
     // Get port info
     rte_eth_dev_info_get(dpdkResources_->portId, &dpdkResources_->devInfo);
-
+    
     // Configure port
     memset(&dpdkResources_->portConf, 0, sizeof(dpdkResources_->portConf));
     dpdkResources_->portConf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
@@ -3211,8 +3116,8 @@ namespace thrift {
       return false;
     }
 
-    struct rte_mbuf* pkts_burst[BURST_SIZE];
-    const uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, pkts_burst, BURST_SIZE);
+    struct rte_mbuf* pkts_burst[1];
+    const uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, pkts_burst, 32);
     
     if (nb_rx > 0) {
       rte_pktmbuf_free(pkts_burst[0]);
@@ -3234,7 +3139,6 @@ namespace thrift {
   }
 
   void TUDPSocket::close() {
-    return;
     if (!dpdkResources_->isInitialized) {
       return;
     }
@@ -3256,320 +3160,230 @@ namespace thrift {
           localIpAddress_ = addr.s_addr;
   }
 
-  // void TUDPSocket::handleArpPacket(struct rte_mbuf* m) {
-  //     struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
-  //     struct rte_arp_hdr* arp_hdr = (struct rte_arp_hdr*)(eth_hdr + 1);
+  void TUDPSocket::handleArpPacket(struct rte_mbuf* m) {
+      struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
+      struct rte_arp_hdr* arp_hdr = (struct rte_arp_hdr*)(eth_hdr + 1);
 
-  //     if (rte_be_to_cpu_16(arp_hdr->arp_opcode) == RTE_ARP_OP_REQUEST &&
-  //         arp_hdr->arp_data.arp_tip == localIpAddress_) {
+      if (rte_be_to_cpu_16(arp_hdr->arp_opcode) == RTE_ARP_OP_REQUEST &&
+          arp_hdr->arp_data.arp_tip == localIpAddress_) {
 
-  //         struct rte_mbuf* reply = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
-  //         if (reply) {
-  //             char* pkt = rte_pktmbuf_append(reply,
-  //                 sizeof(struct rte_ether_hdr) + sizeof(struct rte_arp_hdr));
+          struct rte_mbuf* reply = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
+          if (reply) {
+              char* pkt = rte_pktmbuf_append(reply,
+                  sizeof(struct rte_ether_hdr) + sizeof(struct rte_arp_hdr));
 
-  //             if (pkt) {
-  //                 struct rte_ether_hdr* reply_eth =
-  //                     rte_pktmbuf_mtod(reply, struct rte_ether_hdr*);
-  //                 struct rte_arp_hdr* reply_arp =
-  //                     (struct rte_arp_hdr*)(reply_eth + 1);
+              if (pkt) {
+                  struct rte_ether_hdr* reply_eth =
+                      rte_pktmbuf_mtod(reply, struct rte_ether_hdr*);
+                  struct rte_arp_hdr* reply_arp =
+                      (struct rte_arp_hdr*)(reply_eth + 1);
 
-  //                 // Set ethernet header
-  //                 reply_eth->dst_addr = eth_hdr->src_addr;
-  //                 rte_eth_macaddr_get(dpdkResources_->portId, &reply_eth->src_addr);
-  //                 reply_eth->ether_type = eth_hdr->ether_type;
+                  // Set ethernet header
+                  reply_eth->dst_addr = eth_hdr->src_addr;
+                  rte_eth_macaddr_get(dpdkResources_->portId, &reply_eth->src_addr);
+                  reply_eth->ether_type = eth_hdr->ether_type;
 
-  //                 // Set ARP header
-  //                 reply_arp->arp_hardware = arp_hdr->arp_hardware;
-  //                 reply_arp->arp_protocol = arp_hdr->arp_protocol;
-  //                 reply_arp->arp_hlen = arp_hdr->arp_hlen;
-  //                 reply_arp->arp_plen = arp_hdr->arp_plen;
-  //                 reply_arp->arp_opcode = rte_cpu_to_be_16(RTE_ARP_OP_REPLY);
+                  // Set ARP header
+                  reply_arp->arp_hardware = arp_hdr->arp_hardware;
+                  reply_arp->arp_protocol = arp_hdr->arp_protocol;
+                  reply_arp->arp_hlen = arp_hdr->arp_hlen;
+                  reply_arp->arp_plen = arp_hdr->arp_plen;
+                  reply_arp->arp_opcode = rte_cpu_to_be_16(RTE_ARP_OP_REPLY);
 
-  //                 // Set ARP data
-  //                 rte_eth_macaddr_get(dpdkResources_->portId,
-  //                     &reply_arp->arp_data.arp_sha);
-  //                 reply_arp->arp_data.arp_sip = localIpAddress_;
-  //                 reply_arp->arp_data.arp_tha = arp_hdr->arp_data.arp_sha;
-  //                 reply_arp->arp_data.arp_tip = arp_hdr->arp_data.arp_sip;
+                  // Set ARP data
+                  rte_eth_macaddr_get(dpdkResources_->portId,
+                      &reply_arp->arp_data.arp_sha);
+                  reply_arp->arp_data.arp_sip = localIpAddress_;
+                  reply_arp->arp_data.arp_tha = arp_hdr->arp_data.arp_sha;
+                  reply_arp->arp_data.arp_tip = arp_hdr->arp_data.arp_sip;
 
-  //                 uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId,
-  //                     0, &reply, 1);
-  //                 if (nb_tx == 0) {
-  //                     rte_pktmbuf_free(reply);
-  //                 }
-  //             } else {
-  //                 rte_pktmbuf_free(reply);
-  //             }
-  //         }
-  //     }
-  // }
-
-//  uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-//      if (!dpdkResources_ || !dpdkResources_->isInitialized) {
-//          throw TTransportException(TTransportException::NOT_OPEN, 
-//                                  "Called read on non-open socket");
-//      }
-//
-//      uint32_t total_rx = 0;
-//      struct rte_mbuf* pkt = nullptr;
-//      
-//      //printf("Called read()\n"); 
-//      
-//      // Poll for packets with timeout handling
-//      uint64_t start_time = rte_get_timer_cycles();
-//      uint64_t timeout_cycles = (uint64_t)recvTimeout_ * rte_get_timer_hz() / 1000;
-//
-//      while (total_rx == 0) {
-//          // Check for timeout
-//          if (recvTimeout_ > 0) {
-//              uint64_t elapsed = rte_get_timer_cycles() - start_time;
-//              if (elapsed > timeout_cycles) {
-//                  throw TTransportException(TTransportException::TIMED_OUT,
-//                                          "UDP read timeout");
-//              }
-//          }
-//
-//          // Use optimized single packet receive
-//          uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, &pkt, 1);
-//          if (nb_rx == 0) continue;
-//          //if (nb_rx > 0 ) printf("nb_rx: %d\n", nb_rx);
-//          // Get packet headers
-//          struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
-//          uint16_t ether_type = rte_be_to_cpu_16(eth_hdr->ether_type);
-//
-//          // Handle ARP packets
-//          if (ether_type == RTE_ETHER_TYPE_ARP) {
-//              //fprintf(stderr, "Debug: Received ARP request\n");
-//              handleArpPacket(pkt);
-//              rte_pktmbuf_free(pkt);
-//              continue;
-//          }
-//
-//          // Skip non-IPv4 packets
-//          if (ether_type != RTE_ETHER_TYPE_IPV4) {
-//              fprintf(stderr, "Debug: found non-IPv4 packets\n");
-//              rte_pktmbuf_free(pkt);
-//              continue;
-//          }
-//
-//          //struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
-//          struct rte_ipv4_hdr* ip_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*,
-//                                                              sizeof(struct rte_ether_hdr));
-//          struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
-//
-//          // Skip non-UDP packets
-//          if (ip_hdr->next_proto_id != IPPROTO_UDP) {
-//              fprintf(stderr, "Debug: found non-UDP packet\n");
-//              rte_pktmbuf_free(pkt);
-//              continue;
-//          }
-//
-//          // Validate port if set
-//          if (port_ != 0 && rte_be_to_cpu_16(udp_hdr->dst_port) != port_) {
-//              rte_pktmbuf_free(pkt);
-//              continue;
-//          }
-//
-//          // Get and copy payload
-//          uint8_t* payload = rte_pktmbuf_mtod_offset(pkt, uint8_t*, HEADERS_LEN);
-//          if (!payload) {
-//              printf("Error: Invalid payload\n");  // Debug`
-//              rte_pktmbuf_free(pkt);
-//              continue;
-//          }
-//          uint32_t payload_len = static_cast<uint32_t>(pkt->data_len - HEADERS_LEN);
-//          uint32_t copy_len = std::min(payload_len, len); 
-//          rte_memcpy(buf, payload, copy_len);
-//          total_rx = copy_len;
-//
-//          // Cache peer address
-//          peerAddr_.sin_family = AF_INET;
-//          peerAddr_.sin_port = udp_hdr->src_port;
-//          peerAddr_.sin_addr.s_addr = ip_hdr->src_addr;
-//          
-//          rte_pktmbuf_free(pkt);
-//          break;
-//      }
-//      return total_rx;
-//  }
-//  void TUDPSocket::handleReceivedData(uint8_t* data, uint32_t len) {
-//      std::lock_guard<std::mutex> lock(mutex_);
-//      rxBuffer_.insert(rxBuffer_.end(), data, data + len);
-//      cv_.notify_one();
-//  }
-//  
-//  uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-//      // Wait for data to be available
-//      std::unique_lock<std::mutex> lock(mutex_);
-//      cv_.wait(lock, [this] { return !rxBuffer_.empty(); });
-//
-//      // Copy data to buffer
-//      uint32_t copy_len = std::min(len, static_cast<uint32_t>(rxBuffer_.size()));
-//      std::memcpy(buf, rxBuffer_.data(), copy_len);
-//      rxBuffer_.erase(rxBuffer_.begin(), rxBuffer_.begin() + copy_len);
-//
-//      return copy_len;
-//  }
-//
-//  void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-//      auto& dpdk = DPDKHandler::getInstance();
-//      dpdk.sendData(buf, len);
-//  }
-    
-    uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-      // Shared Memory Implementation
-      if (execution_mode == "dpdk") {
-        // Wait for data from DPDK
-        sem_wait(&shared_mem_->rx_buffer.sem);
-        pthread_mutex_lock(&shared_mem_->rx_buffer.mutex);
-
-        if (!shared_mem_->rx_buffer.has_data) {
-            pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
-            return 0;
-        }
-
-        // Copy data from shared memory
-        uint32_t copy_len = std::min(len, (uint32_t)shared_mem_->rx_buffer.size);
-        memcpy(buf, shared_mem_->rx_buffer.data, copy_len);
-
-        if (copy_len > 0) {
-          logger_.logDPDKToRPC(buf, copy_len);
-        }
-
-        // std::cout << "Shared Memory Read: " << copy_len << " bytes\n";
-        // std::cout << "First 32 bytes: ";
-        // for(uint32_t i = 0; i < std::min(copy_len, 32u); i++) {
-        //     printf("%02x ", buf[i]);
-        // }
-        // std::cout << "\nBuffer as int32: " << *(reinterpret_cast<int32_t*>(buf)) << std::endl;
-
-        // Reset buffer state
-        shared_mem_->rx_buffer.has_data = false;
-        shared_mem_->rx_buffer.size = 0;
-
-        pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
-        return copy_len;
-      } else {
-        // file implementation
-        return replay_.read(buf, len);
+                  uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId,
+                      0, &reply, 1);
+                  if (nb_tx == 0) {
+                      rte_pktmbuf_free(reply);
+                  }
+              } else {
+                  rte_pktmbuf_free(reply);
+              }
+          }
       }
+  }
+
+  uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
+      if (!dpdkResources_ || !dpdkResources_->isInitialized) {
+          throw TTransportException(TTransportException::NOT_OPEN, 
+                                  "Called read on non-open socket");
+      }
+
+      uint32_t total_rx = 0;
+      struct rte_mbuf* pkt = nullptr;
+      
+      //printf("Called read() with len: %d\n", len); 
+      
+      // Poll for packets with timeout handling
+      uint64_t start_time = rte_get_timer_cycles();
+      uint64_t timeout_cycles = (uint64_t)recvTimeout_ * rte_get_timer_hz() / 1000;
+
+      while (total_rx == 0) {
+          // Check for timeout
+          if (recvTimeout_ > 0) {
+              uint64_t elapsed = rte_get_timer_cycles() - start_time;
+              if (elapsed > timeout_cycles) {
+                  throw TTransportException(TTransportException::TIMED_OUT,
+                                          "UDP read timeout");
+              }
+          }
+
+          // Use optimized single packet receive
+          uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, &pkt, 32);
+          if (nb_rx == 0) continue;
+          //if (nb_rx > 0 ) printf("nb_rx: %d\n", nb_rx);
+          // Get packet headers
+          struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
+          uint16_t ether_type = rte_be_to_cpu_16(eth_hdr->ether_type);
+
+          // Handle ARP packets
+          if (ether_type == RTE_ETHER_TYPE_ARP) {
+              //fprintf(stderr, "Debug: Received ARP request\n");
+              handleArpPacket(pkt);
+              rte_pktmbuf_free(pkt);
+              continue;
+          }
+
+          // Skip non-IPv4 packets
+          if (ether_type != RTE_ETHER_TYPE_IPV4) {
+              //fprintf(stderr, "Debug: found non-IPv4 packets\n");
+              rte_pktmbuf_free(pkt);
+              continue;
+          }
+
+          //struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
+          struct rte_ipv4_hdr* ip_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*,
+                                                              sizeof(struct rte_ether_hdr));
+          struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
+
+          // Skip non-UDP packets
+          if (ip_hdr->next_proto_id != IPPROTO_UDP) {
+              //fprintf(stderr, "Debug: found non-UDP packet\n");
+              rte_pktmbuf_free(pkt);
+              continue;
+          }
+
+          // Validate port if set
+          if (port_ != 0 && rte_be_to_cpu_16(udp_hdr->dst_port) != port_) {
+              rte_pktmbuf_free(pkt);
+              continue;
+          }
+
+          // Get and copy payload
+          uint8_t* payload = rte_pktmbuf_mtod_offset(pkt, uint8_t*, HEADERS_LEN);
+          if (!payload) {
+              printf("Error: Invalid payload\n");  // Debug`
+              rte_pktmbuf_free(pkt);
+              continue;
+          }
+          uint32_t payload_len = static_cast<uint32_t>(pkt->data_len - HEADERS_LEN);
+          uint32_t copy_len = std::min(payload_len, len); 
+          rte_memcpy(buf, payload, copy_len);
+          total_rx = copy_len;
+
+          // Cache peer address
+          peerAddr_.sin_family = AF_INET;
+          peerAddr_.sin_port = udp_hdr->src_port;
+          peerAddr_.sin_addr.s_addr = ip_hdr->src_addr;
+          
+          rte_pktmbuf_free(pkt);
+          break;
+      }
+      return total_rx;
+  }
+
+  void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
+    write_partial(buf, len);
+  }
+
+  uint32_t TUDPSocket::write_partial(const uint8_t* buf, uint32_t len) {
+    if (!dpdkResources_ || !dpdkResources_->isInitialized) {
+      throw TTransportException(TTransportException::NOT_OPEN,
+                              "Called write on non-open socket");
     }
 
-    void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-      // shared memory implementation
-      if (execution_mode == "dpdk") {
-        pthread_mutex_lock(&shared_mem_->tx_buffer.mutex);
-
-        // Copy to shared memory
-        memcpy(shared_mem_->tx_buffer.data, buf, len);
-        shared_mem_->tx_buffer.size = len;
-        shared_mem_->tx_buffer.has_data = true;
-
-        logger_.logRPCToDPDK(buf, len);
-
-        // Signal DPDK
-        sem_post(&shared_mem_->tx_buffer.sem);
-        pthread_mutex_unlock(&shared_mem_->tx_buffer.mutex);
-      } else {
-        // file implementation
-        replay_.write(buf, len);
-      }
+    // Allocate new mbuf
+    struct rte_mbuf* m = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
+    if (!m) {
+        throw TTransportException(TTransportException::UNKNOWN,
+                                "Failed to allocate mbuf");
     }
 
-    // uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-    //     return replay_.read(buf, len);
-    // }
-    
-    // void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-    //     replay_.write(buf, len);
-    // }
+    // Reserve space for headers
+    char* pkt = rte_pktmbuf_append(m, HEADERS_LEN + len);
+    if (!pkt) {
+      rte_pktmbuf_free(m);
+      throw TTransportException(TTransportException::UNKNOWN,
+                              "Failed to reserve space in mbuf");
+    }
 
-//  void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-//    write_partial(buf, len);
-//  }
-//
-//  uint32_t TUDPSocket::write_partial(const uint8_t* buf, uint32_t len) {
-//    if (!dpdkResources_ || !dpdkResources_->isInitialized) {
-//      throw TTransportException(TTransportException::NOT_OPEN,
-//                              "Called write on non-open socket");
-//    }
-//
-//    // Allocate new mbuf
-//    struct rte_mbuf* m = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
-//    if (!m) {
-//        throw TTransportException(TTransportException::UNKNOWN,
-//                                "Failed to allocate mbuf");
-//    }
-//
-//    // Reserve space for headers
-//    char* pkt = rte_pktmbuf_append(m, HEADERS_LEN + len);
-//    if (!pkt) {
-//      rte_pktmbuf_free(m);
-//      throw TTransportException(TTransportException::UNKNOWN,
-//                              "Failed to reserve space in mbuf");
-//    }
-//
-//    // Set up headers
-//    struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
-//    struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
-//    struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
-//    uint8_t* payload = (uint8_t*)(udp_hdr + 1);
-//
-//    // Ethernet header
-//    rte_eth_macaddr_get(dpdkResources_->portId, &eth_hdr->src_addr);
-//    // Destination MAC should be set based on ARP or known destination
-//    // For now using broadcast
-//    // memset(&eth_hdr->dst_addr, 0xff, RTE_ETHER_ADDR_LEN); 
-//    // Set destination MAC directly
-//    // Converting 0c:42:a1:cc:83:82 to bytes
-//    eth_hdr->dst_addr.addr_bytes[0] = 0x0c;
-//    eth_hdr->dst_addr.addr_bytes[1] = 0x42;
-//    eth_hdr->dst_addr.addr_bytes[2] = 0xa1;
-//    eth_hdr->dst_addr.addr_bytes[3] = 0xcc;
-//    eth_hdr->dst_addr.addr_bytes[4] = 0x83;
-//    eth_hdr->dst_addr.addr_bytes[5] = 0x82;
-//
-//    eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
-//
-//    // IP header
-//    memset(ip_hdr, 0, sizeof(*ip_hdr));
-//    ip_hdr->version_ihl = (4 << 4) | (sizeof(*ip_hdr) >> 2);
-//    ip_hdr->type_of_service = 0;
-//    ip_hdr->total_length = rte_cpu_to_be_16(sizeof(*ip_hdr) + sizeof(*udp_hdr) + len);
-//    ip_hdr->packet_id = 0;
-//    ip_hdr->fragment_offset = 0;
-//    ip_hdr->time_to_live = 64;
-//    ip_hdr->next_proto_id = IPPROTO_UDP;
-//    // Source IP should be interface IP
-//    ip_hdr->src_addr = localIpAddress_; //use configured Ip
-//    // Destination IP from peer address
-//    ip_hdr->dst_addr = peerAddr_.sin_addr.s_addr;
-//    ip_hdr->hdr_checksum = 0;
-//    ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
-//
-//    // UDP header
-//    udp_hdr->src_port = rte_cpu_to_be_16(port_);
-//    udp_hdr->dst_port = peerAddr_.sin_port;
-//    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(*udp_hdr) + len);
-//    udp_hdr->dgram_cksum = 0;
-//
-//    // Copy payload
-//    rte_memcpy(payload, buf, len);
-//
-//    // Calculate UDP checksum
-//    udp_hdr->dgram_cksum = rte_ipv4_udptcp_cksum(ip_hdr, udp_hdr);
-//
-//    // Send packet
-//    uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId, 0, &m, 1);
-//    if (nb_tx == 0) {
-//      rte_pktmbuf_free(m);
-//      throw TTransportException(TTransportException::UNKNOWN,
-//                              "Failed to send packet");
-//    }
-//
-//    return len;
-//  }
+    // Set up headers
+    struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
+    struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
+    struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
+    uint8_t* payload = (uint8_t*)(udp_hdr + 1);
+
+    // Ethernet header
+    rte_eth_macaddr_get(dpdkResources_->portId, &eth_hdr->src_addr);
+    // Destination MAC should be set based on ARP or known destination
+    // For now using broadcast
+    // memset(&eth_hdr->dst_addr, 0xff, RTE_ETHER_ADDR_LEN); 
+    // Set destination MAC directly
+    // b8:ce:f6:d2:3a:ca
+    eth_hdr->dst_addr.addr_bytes[0] = 0xb8;
+    eth_hdr->dst_addr.addr_bytes[1] = 0xce;
+    eth_hdr->dst_addr.addr_bytes[2] = 0xf6;
+    eth_hdr->dst_addr.addr_bytes[3] = 0xd2;
+    eth_hdr->dst_addr.addr_bytes[4] = 0x3a;
+    eth_hdr->dst_addr.addr_bytes[5] = 0xca;
+ 
+
+    eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+
+    // IP header
+    memset(ip_hdr, 0, sizeof(*ip_hdr));
+    ip_hdr->version_ihl = (4 << 4) | (sizeof(*ip_hdr) >> 2);
+    ip_hdr->type_of_service = 0;
+    ip_hdr->total_length = rte_cpu_to_be_16(sizeof(*ip_hdr) + sizeof(*udp_hdr) + len);
+    ip_hdr->packet_id = 0;
+    ip_hdr->fragment_offset = 0;
+    ip_hdr->time_to_live = 64;
+    ip_hdr->next_proto_id = IPPROTO_UDP;
+    // Source IP should be interface IP
+    ip_hdr->src_addr = localIpAddress_; //use configured Ip
+    // Destination IP from peer address
+    ip_hdr->dst_addr = peerAddr_.sin_addr.s_addr;
+    ip_hdr->hdr_checksum = 0;
+    ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
+
+    // UDP header
+    udp_hdr->src_port = rte_cpu_to_be_16(port_);
+    udp_hdr->dst_port = peerAddr_.sin_port;
+    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(*udp_hdr) + len);
+    udp_hdr->dgram_cksum = 0;
+
+    // Copy payload
+    rte_memcpy(payload, buf, len);
+
+    // Calculate UDP checksum
+    udp_hdr->dgram_cksum = rte_ipv4_udptcp_cksum(ip_hdr, udp_hdr);
+
+    // Send packet
+    uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId, 0, &m, 1);
+    if (nb_tx == 0) {
+      rte_pktmbuf_free(m);
+      throw TTransportException(TTransportException::UNKNOWN,
+                              "Failed to send packet");
+    }
+
+    return len;
+  }
 
   // Helper function to get local IP address
   uint32_t TUDPSocket::GetLocalIPAddress(uint16_t port_id __attribute__((unused))) {
@@ -3650,14 +3464,14 @@ namespace thrift {
   // ***TServerUDPSocket.cpp***
   TServerUDPSocket::TServerUDPSocket(int port)
     : port_(port)
-    , isInitialized_(true)
+    , isInitialized_(false)
     , sendTimeout_(0)
     , recvTimeout_(0) {
   }
 
   TServerUDPSocket::TServerUDPSocket(int port, int sendTimeout, int recvTimeout)
     : port_(port)
-    , isInitialized_(true)
+    , isInitialized_(false)
     , sendTimeout_(sendTimeout)
     , recvTimeout_(recvTimeout) {
   }
@@ -3672,10 +3486,10 @@ namespace thrift {
       // Minimal EAL arguments
       const char* argv[] = {
           "thrift-server",           // Program name
-          "-l", "0-1",              // Use CPU cores 0-1
+          "-l", "1",              // Use CPU cores 0-1
           "-n", "4",                // Number of memory channels
+          "--proc-type=auto",       // Process type
           "-a", "0000:81:00.0",	    // Specify Interface
-	  "--proc-type=auto",       // Process type
           "--log-level", "8",       // Debug log level
           NULL
       };
@@ -3729,6 +3543,7 @@ namespace thrift {
     dpdkResources_->portConf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
     dpdkResources_->portConf.rxmode.mq_mode = RTE_ETH_MQ_RX_NONE;
     dpdkResources_->portConf.rxmode.offloads = RTE_ETH_RX_OFFLOAD_CHECKSUM;
+    //dpdkResources_->portConf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_SCATTER;
     
     // Accept all packet types
     dpdkResources_->portConf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_IPV4_CKSUM;
@@ -3737,11 +3552,13 @@ namespace thrift {
     dpdkResources_->portConf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
     dpdkResources_->portConf.txmode.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | 
                                               RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
-	
-    printf("Port %u driver name: %s, if_index: %d\n",
-		           dpdkResources_->portId, dpdkResources_->devInfo.driver_name, dpdkResources_->devInfo.if_index);
+
+    printf("Port %u driver: %s\n", dpdkResources_->portId, dpdkResources_->devInfo.driver_name);
+    printf("Port %u max RX queues: %u, max TX queues: %u\n",
+             dpdkResources_->portId, dpdkResources_->devInfo.max_rx_queues, dpdkResources_->devInfo.max_tx_queues);
+
     // Configure device
-    int ret = 1; //rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
+    int ret = rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
     if (ret != 0) {
       fprintf(stderr, "Failed to configure port %d (err=%d)\n", dpdkResources_->portId, ret);
       return false;
@@ -3753,6 +3570,15 @@ namespace thrift {
     if (ret != 0) {
       return false;
     }
+
+    printf("Port %u MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+     dpdkResources_->portId,
+     addr.addr_bytes[0],
+     addr.addr_bytes[1],
+     addr.addr_bytes[2],
+     addr.addr_bytes[3],
+     addr.addr_bytes[4],
+     addr.addr_bytes[5]);
 
     // Setup RX queue
     ret = rte_eth_rx_queue_setup(dpdkResources_->portId,
@@ -3793,13 +3619,11 @@ namespace thrift {
     if (ret < 0 || !link.link_status) {
       return false;
     }
-
     return true;
   }
 
   void TServerUDPSocket::listen() {
     if (isInitialized_) {
-      dpdkResources_ = std::make_shared<DPDKResources>();
       return;
     }
 
@@ -3825,7 +3649,6 @@ namespace thrift {
     }
 
     // Create new UDP socket for client communication
-    // printf("about to create socket\n");
     std::shared_ptr<TUDPSocket> client = createSocket(dpdkResources_->portId);
     
     if (sendTimeout_ > 0) {
@@ -3834,14 +3657,13 @@ namespace thrift {
     if (recvTimeout_ > 0) {
       client->setRecvTimeout(recvTimeout_);
     }
-    // fprintf(stderr, "DPDK Initialized, returning client!\n");
+    //fprintf(stderr, "DPDK Initialized, returning client!\n");
     return client;
   }
 
   std::shared_ptr<TUDPSocket> TServerUDPSocket::createSocket(uint16_t portId) {
       // Create socket with shared DPDK resources
-      //auto socket = std::make_shared<TUDPSocket>(dpdkResources_);
-      auto socket = std::make_shared<TUDPSocket>();
+      auto socket = std::make_shared<TUDPSocket>(dpdkResources_);
       
       // Set socket-specific parameters
       if (sendTimeout_ > 0) {
@@ -3868,7 +3690,6 @@ namespace thrift {
   }
 
   void TServerUDPSocket::close() {
-    return;
     concurrency::Guard g(mutex_);
     
     if (!dpdkResources_->isInitialized) {
@@ -5879,8 +5700,1725 @@ namespace thrift {
         default: throw TProtocolException(TProtocolException::UNKNOWN, "unrecognized type code");
     }
   }
+
+  // ***TBase64Utils.h ***
+  // in must be at least len bytes
+  // len must be 1, 2, or 3
+  // buf must be a buffer of at least 4 bytes and may not overlap in
+  // the data is not padded with '='; the caller can do this if desired
+  void base64_encode(const uint8_t* in, uint32_t len, uint8_t* buf);
+
+  // buf must be a buffer of at least 4 bytes and contain base64 encoded values
+  // buf will be changed to contain output bytes
+  // len is number of bytes to consume from input (must be 2, 3, or 4)
+  // no '=' padding should be included in the input
+  void base64_decode(uint8_t* buf, uint32_t len);
+
+  // ***TBase64Utils.cpp ***
+  static const uint8_t* kBase64EncodeTable
+    = (const uint8_t*)"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  void base64_encode(const uint8_t* in, uint32_t len, uint8_t* buf) {
+    buf[0] = kBase64EncodeTable[(in[0] >> 2) & 0x3f];
+    if (len == 3) {
+      buf[1] = kBase64EncodeTable[((in[0] << 4) & 0x30) | ((in[1] >> 4) & 0x0f)];
+      buf[2] = kBase64EncodeTable[((in[1] << 2) & 0x3c) | ((in[2] >> 6) & 0x03)];
+      buf[3] = kBase64EncodeTable[in[2] & 0x3f];
+    } else if (len == 2) {
+      buf[1] = kBase64EncodeTable[((in[0] << 4) & 0x30) | ((in[1] >> 4) & 0x0f)];
+      buf[2] = kBase64EncodeTable[(in[1] << 2) & 0x3c];
+    } else { // len == 1
+      buf[1] = kBase64EncodeTable[(in[0] << 4) & 0x30];
+    }
+  }
+
+  static const uint8_t kBase64DecodeTable[256] = {
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0x3e,
+      0xff,
+      0xff,
+      0xff,
+      0x3f,
+      0x34,
+      0x35,
+      0x36,
+      0x37,
+      0x38,
+      0x39,
+      0x3a,
+      0x3b,
+      0x3c,
+      0x3d,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0x00,
+      0x01,
+      0x02,
+      0x03,
+      0x04,
+      0x05,
+      0x06,
+      0x07,
+      0x08,
+      0x09,
+      0x0a,
+      0x0b,
+      0x0c,
+      0x0d,
+      0x0e,
+      0x0f,
+      0x10,
+      0x11,
+      0x12,
+      0x13,
+      0x14,
+      0x15,
+      0x16,
+      0x17,
+      0x18,
+      0x19,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0x1a,
+      0x1b,
+      0x1c,
+      0x1d,
+      0x1e,
+      0x1f,
+      0x20,
+      0x21,
+      0x22,
+      0x23,
+      0x24,
+      0x25,
+      0x26,
+      0x27,
+      0x28,
+      0x29,
+      0x2a,
+      0x2b,
+      0x2c,
+      0x2d,
+      0x2e,
+      0x2f,
+      0x30,
+      0x31,
+      0x32,
+      0x33,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+      0xff,
+  };
+
+  void base64_decode(uint8_t* buf, uint32_t len) {
+    buf[0] = (kBase64DecodeTable[buf[0]] << 2) | (kBase64DecodeTable[buf[1]] >> 4);
+    if (len > 2) {
+      buf[1] = ((kBase64DecodeTable[buf[1]] << 4) & 0xf0) | (kBase64DecodeTable[buf[2]] >> 2);
+      if (len > 3) {
+        buf[2] = ((kBase64DecodeTable[buf[2]] << 6) & 0xc0) | (kBase64DecodeTable[buf[3]]);
+      }
+    }
+  }
+
+  // ***TJSONProtocol.h***/
+  // Forward declaration
+  class TJSONContext;
+
+  /**
+   * JSON protocol for Thrift.
+   *
+   * Implements a protocol which uses JSON as the wire-format.
+   *
+   * Thrift types are represented as described below:
+   *
+   * 1. Every Thrift integer type is represented as a JSON number.
+   *
+   * 2. Thrift doubles are represented as JSON numbers. Some special values are
+   *    represented as strings:
+   *    a. "NaN" for not-a-number values
+   *    b. "Infinity" for positive infinity
+   *    c. "-Infinity" for negative infinity
+   *
+   * 3. Thrift string values are emitted as JSON strings, with appropriate
+   *    escaping.
+   *
+   * 4. Thrift binary values are encoded into Base64 and emitted as JSON strings.
+   *    The readBinary() method is written such that it will properly skip if
+   *    called on a Thrift string (although it will decode garbage data).
+   *
+   *    NOTE: Base64 padding is optional for Thrift binary value encoding. So
+   *    the readBinary() method needs to decode both input strings with padding
+   *    and those without one.
+   *
+   * 5. Thrift structs are represented as JSON objects, with the field ID as the
+   *    key, and the field value represented as a JSON object with a single
+   *    key-value pair. The key is a short string identifier for that type,
+   *    followed by the value. The valid type identifiers are: "tf" for bool,
+   *    "i8" for byte, "i16" for 16-bit integer, "i32" for 32-bit integer, "i64"
+   *    for 64-bit integer, "dbl" for double-precision loating point, "str" for
+   *    string (including binary), "rec" for struct ("records"), "map" for map,
+   *    "lst" for list, "set" for set.
+   *
+   * 6. Thrift lists and sets are represented as JSON arrays, with the first
+   *    element of the JSON array being the string identifier for the Thrift
+   *    element type and the second element of the JSON array being the count of
+   *    the Thrift elements. The Thrift elements then follow.
+   *
+   * 7. Thrift maps are represented as JSON arrays, with the first two elements
+   *    of the JSON array being the string identifiers for the Thrift key type
+   *    and value type, followed by the count of the Thrift pairs, followed by a
+   *    JSON object containing the key-value pairs. Note that JSON keys can only
+   *    be strings, which means that the key type of the Thrift map should be
+   *    restricted to numeric or string types -- in the case of numerics, they
+   *    are serialized as strings.
+   *
+   * 8. Thrift messages are represented as JSON arrays, with the protocol
+   *    version #, the message name, the message type, and the sequence ID as
+   *    the first 4 elements.
+   *
+   * More discussion of the double handling is probably warranted. The aim of
+   * the current implementation is to match as closely as possible the behavior
+   * of Java's Double.toString(), which has no precision loss.  Implementors in
+   * other languages should strive to achieve that where possible. I have not
+   * yet verified whether std::istringstream::operator>>, which is doing that
+   * work for me in C++, loses any precision, but I am leaving this as a future
+   * improvement. I may try to provide a C component for this, so that other
+   * languages could bind to the same underlying implementation for maximum
+   * consistency.
+   *
+   */
+  class TJSONProtocol : public TVirtualProtocol<TJSONProtocol> {
+  public:
+    TJSONProtocol(std::shared_ptr<TTransport> ptrans);
+
+    ~TJSONProtocol() override;
+
+  private:
+    void pushContext(std::shared_ptr<TJSONContext> c);
+
+    void popContext();
+
+    uint32_t writeJSONEscapeChar(uint8_t ch);
+
+    uint32_t writeJSONChar(uint8_t ch);
+
+    uint32_t writeJSONString(const std::string& str);
+
+    uint32_t writeJSONBase64(const std::string& str);
+
+    template <typename NumberType>
+    uint32_t writeJSONInteger(NumberType num);
+
+    uint32_t writeJSONDouble(double num);
+
+    uint32_t writeJSONObjectStart();
+
+    uint32_t writeJSONObjectEnd();
+
+    uint32_t writeJSONArrayStart();
+
+    uint32_t writeJSONArrayEnd();
+
+    uint32_t readJSONSyntaxChar(uint8_t ch);
+
+    uint32_t readJSONEscapeChar(uint16_t* out);
+
+    uint32_t readJSONString(std::string& str, bool skipContext = false);
+
+    uint32_t readJSONBase64(std::string& str);
+
+    uint32_t readJSONNumericChars(std::string& str);
+
+    template <typename NumberType>
+    uint32_t readJSONInteger(NumberType& num);
+
+    uint32_t readJSONDouble(double& num);
+
+    uint32_t readJSONObjectStart();
+
+    uint32_t readJSONObjectEnd();
+
+    uint32_t readJSONArrayStart();
+
+    uint32_t readJSONArrayEnd();
+
+  public:
+    /**
+     * Writing functions.
+     */
+
+    uint32_t writeMessageBegin(const std::string& name,
+                              const TMessageType messageType,
+                              const int32_t seqid);
+
+    uint32_t writeMessageEnd();
+
+    uint32_t writeStructBegin(const char* name);
+
+    uint32_t writeStructEnd();
+
+    uint32_t writeFieldBegin(const char* name, const TType fieldType, const int16_t fieldId);
+
+    uint32_t writeFieldEnd();
+
+    uint32_t writeFieldStop();
+
+    uint32_t writeMapBegin(const TType keyType, const TType valType, const uint32_t size);
+
+    uint32_t writeMapEnd();
+
+    uint32_t writeListBegin(const TType elemType, const uint32_t size);
+
+    uint32_t writeListEnd();
+
+    uint32_t writeSetBegin(const TType elemType, const uint32_t size);
+
+    uint32_t writeSetEnd();
+
+    uint32_t writeBool(const bool value);
+
+    uint32_t writeByte(const int8_t byte);
+
+    uint32_t writeI16(const int16_t i16);
+
+    uint32_t writeI32(const int32_t i32);
+
+    uint32_t writeI64(const int64_t i64);
+
+    uint32_t writeDouble(const double dub);
+
+    uint32_t writeString(const std::string& str);
+
+    uint32_t writeBinary(const std::string& str);
+
+    uint32_t writeUUID(const ::apache::thrift::TUuid& uuid);
+
+    /**
+     * Reading functions
+     */
+
+    uint32_t readMessageBegin(std::string& name, TMessageType& messageType, int32_t& seqid);
+
+    uint32_t readMessageEnd();
+
+    uint32_t readStructBegin(std::string& name);
+
+    uint32_t readStructEnd();
+
+    uint32_t readFieldBegin(std::string& name, TType& fieldType, int16_t& fieldId);
+
+    uint32_t readFieldEnd();
+
+    uint32_t readMapBegin(TType& keyType, TType& valType, uint32_t& size);
+
+    uint32_t readMapEnd();
+
+    uint32_t readListBegin(TType& elemType, uint32_t& size);
+
+    uint32_t readListEnd();
+
+    uint32_t readSetBegin(TType& elemType, uint32_t& size);
+
+    uint32_t readSetEnd();
+
+    uint32_t readBool(bool& value);
+
+    // Provide the default readBool() implementation for std::vector<bool>
+    using TVirtualProtocol<TJSONProtocol>::readBool;
+
+    uint32_t readByte(int8_t& byte);
+
+    uint32_t readI16(int16_t& i16);
+
+    uint32_t readI32(int32_t& i32);
+
+    uint32_t readI64(int64_t& i64);
+
+    uint32_t readDouble(double& dub);
+
+    uint32_t readString(std::string& str);
+
+    uint32_t readBinary(std::string& str);
+
+    uint32_t readUUID(::apache::thrift::TUuid& uuid);
+
+    int getMinSerializedSize(TType type) override;
+
+    void checkReadBytesAvailable(TSet& set) override
+    {
+        trans_->checkReadBytesAvailable(set.size_ * getMinSerializedSize(set.elemType_));
+    }
+
+    void checkReadBytesAvailable(TList& list) override
+    {
+        trans_->checkReadBytesAvailable(list.size_ * getMinSerializedSize(list.elemType_));
+    }
+
+    void checkReadBytesAvailable(TMap& map) override
+    {
+        int elmSize = getMinSerializedSize(map.keyType_) + getMinSerializedSize(map.valueType_);
+        trans_->checkReadBytesAvailable(map.size_ * elmSize);
+    }
+
+    class LookaheadReader {
+
+    public:
+      LookaheadReader(TTransport& trans) : trans_(&trans), hasData_(false), data_(0) {}
+
+      uint8_t read() {
+        if (hasData_) {
+          hasData_ = false;
+        } else {
+          trans_->readAll(&data_, 1);
+        }
+        return data_;
+      }
+
+      uint8_t peek() {
+        if (!hasData_) {
+          trans_->readAll(&data_, 1);
+        }
+        hasData_ = true;
+        return data_;
+      }
+
+    private:
+      TTransport* trans_;
+      bool hasData_;
+      uint8_t data_;
+    };
+
+  private:
+    TTransport* trans_;
+
+    std::stack<std::shared_ptr<TJSONContext> > contexts_;
+    std::shared_ptr<TJSONContext> context_;
+    LookaheadReader reader_;
+  };
+
+  /**
+   * Constructs input and output protocol objects given transports.
+   */
+  class TJSONProtocolFactory : public TProtocolFactory {
+  public:
+    TJSONProtocolFactory() = default;
+
+    ~TJSONProtocolFactory() override = default;
+
+    std::shared_ptr<TProtocol> getProtocol(std::shared_ptr<TTransport> trans) override {
+      return std::shared_ptr<TProtocol>(new TJSONProtocol(trans));
+    }
+  };
+
+  // ***TJSONProtocol.cpp***/
+  // Static data
+
+  static const uint8_t kJSONObjectStart = '{';
+  static const uint8_t kJSONObjectEnd = '}';
+  static const uint8_t kJSONArrayStart = '[';
+  static const uint8_t kJSONArrayEnd = ']';
+  static const uint8_t kJSONPairSeparator = ':';
+  static const uint8_t kJSONElemSeparator = ',';
+  static const uint8_t kJSONBackslash = '\\';
+  static const uint8_t kJSONStringDelimiter = '"';
+  static const uint8_t kJSONEscapeChar = 'u';
+
+  static const std::string kJSONEscapePrefix("\\u00");
+
+  static const uint32_t kThriftVersion1 = 1;
+
+  static const std::string kThriftNan("NaN");
+  static const std::string kThriftInfinity("Infinity");
+  static const std::string kThriftNegativeInfinity("-Infinity");
+
+  static const std::string kTypeNameBool("tf");
+  static const std::string kTypeNameByte("i8");
+  static const std::string kTypeNameI16("i16");
+  static const std::string kTypeNameI32("i32");
+  static const std::string kTypeNameI64("i64");
+  static const std::string kTypeNameDouble("dbl");
+  static const std::string kTypeNameStruct("rec");
+  static const std::string kTypeNameString("str");
+  static const std::string kTypeNameMap("map");
+  static const std::string kTypeNameList("lst");
+  static const std::string kTypeNameSet("set");
+  static const std::string kTypeNameUuid("uid");
+
+  static const std::string& getTypeNameForTypeID(TType typeID) {
+    switch (typeID) {
+    case T_BOOL:
+      return kTypeNameBool;
+    case T_BYTE:
+      return kTypeNameByte;
+    case T_I16:
+      return kTypeNameI16;
+    case T_I32:
+      return kTypeNameI32;
+    case T_I64:
+      return kTypeNameI64;
+    case T_DOUBLE:
+      return kTypeNameDouble;
+    case T_STRING:
+      return kTypeNameString;
+    case T_STRUCT:
+      return kTypeNameStruct;
+    case T_MAP:
+      return kTypeNameMap;
+    case T_SET:
+      return kTypeNameSet;
+    case T_LIST:
+      return kTypeNameList;
+    case T_UUID:
+      return kTypeNameUuid;
+    default:
+      throw TProtocolException(TProtocolException::NOT_IMPLEMENTED, "Unrecognized type");
+    }
+  }
+
+  static TType getTypeIDForTypeName(const std::string& name) {
+    TType result = T_STOP; // Sentinel value
+    if (name.length() > 1) {
+      switch (name[0]) {
+      case 'd':
+        result = T_DOUBLE;
+        break;
+      case 'i':
+        switch (name[1]) {
+        case '8':
+          result = T_BYTE;
+          break;
+        case '1':
+          result = T_I16;
+          break;
+        case '3':
+          result = T_I32;
+          break;
+        case '6':
+          result = T_I64;
+          break;
+        }
+        break;
+      case 'l':
+        result = T_LIST;
+        break;
+      case 'm':
+        result = T_MAP;
+        break;
+      case 'r':
+        result = T_STRUCT;
+        break;
+      case 's':
+        if (name[1] == 't') {
+          result = T_STRING;
+        } else if (name[1] == 'e') {
+          result = T_SET;
+        }
+        break;
+      case 't':
+        result = T_BOOL;
+        break;
+      case 'u':
+        result = T_UUID;
+        break;
+      }
+    }
+    if (result == T_STOP) {
+      throw TProtocolException(TProtocolException::NOT_IMPLEMENTED, "Unrecognized type");
+    }
+    return result;
+  }
+
+  // This table describes the handling for the first 0x30 characters
+  //  0 : escape using "\u00xx" notation
+  //  1 : just output index
+  // <other> : escape using "\<other>" notation
+  static const uint8_t kJSONCharTable[0x30] = {
+      //  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      'b',
+      't',
+      'n',
+      0,
+      'f',
+      'r',
+      0,
+      0, // 0
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0, // 1
+      1,
+      1,
+      '"',
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1, // 2
+  };
+
+  // This string's characters must match up with the elements in kEscapeCharVals.
+  // I don't have '/' on this list even though it appears on www.json.org --
+  // it is not in the RFC
+  const static std::string kEscapeChars("\"\\bfnrt");
+
+  // The elements of this array must match up with the sequence of characters in
+  // kEscapeChars
+  const static uint8_t kEscapeCharVals[7] = {
+      '"',
+      '\\',
+      '\b',
+      '\f',
+      '\n',
+      '\r',
+      '\t',
+  };
+
+  // Static helper functions
+
+  // Read 1 character from the transport trans and verify that it is the
+  // expected character ch.
+  // Throw a protocol exception if it is not.
+  static uint32_t readSyntaxChar(TJSONProtocol::LookaheadReader& reader, uint8_t ch) {
+    uint8_t ch2 = reader.read();
+    if (ch2 != ch) {
+      throw TProtocolException(TProtocolException::INVALID_DATA,
+                              "Expected \'" + std::string((char*)&ch, 1) + "\'; got \'"
+                              + std::string((char*)&ch2, 1) + "\'.");
+    }
+    return 1;
+  }
+
+  // Return the integer value of a hex character ch.
+  // Throw a protocol exception if the character is not [0-9a-f].
+  static uint8_t hexVal(uint8_t ch) {
+    if ((ch >= '0') && (ch <= '9')) {
+      return ch - '0';
+    } else if ((ch >= 'a') && (ch <= 'f')) {
+      return ch - 'a' + 10;
+    } else {
+      throw TProtocolException(TProtocolException::INVALID_DATA,
+                              "Expected hex val ([0-9a-f]); got \'" + std::string((char*)&ch, 1)
+                              + "\'.");
+    }
+  }
+
+  // Return the hex character representing the integer val. The value is masked
+  // to make sure it is in the correct range.
+  static uint8_t hexChar(uint8_t val) {
+    val &= 0x0F;
+    if (val < 10) {
+      return val + '0';
+    } else {
+      return val - 10 + 'a';
+    }
+  }
+
+  // Return true if the character ch is in [-+0-9.Ee]; false otherwise
+  static bool isJSONNumeric(uint8_t ch) {
+    switch (ch) {
+    case '+':
+    case '-':
+    case '.':
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+    case 'E':
+    case 'e':
+      return true;
+    }
+    return false;
+  }
+
+  // Return true if the code unit is high surrogate
+  static bool isHighSurrogate(uint16_t val) {
+    return val >= 0xD800 && val <= 0xDBFF;
+  }
+
+  // Return true if the code unit is low surrogate
+  static bool isLowSurrogate(uint16_t val) {
+    return val >= 0xDC00 && val <= 0xDFFF;
+  }
+
+  /**
+   * Class to serve as base JSON context and as base class for other context
+   * implementations
+   */
+  class TJSONContext {
+
+  public:
+    TJSONContext() = default;
+
+    virtual ~TJSONContext() = default;
+
+    /**
+     * Write context data to the transport. Default is to do nothing.
+     */
+    virtual uint32_t write(TTransport& trans) {
+      (void)trans;
+      return 0;
+    };
+
+    /**
+     * Read context data from the transport. Default is to do nothing.
+     */
+    virtual uint32_t read(TJSONProtocol::LookaheadReader& reader) {
+      (void)reader;
+      return 0;
+    };
+
+    /**
+     * Return true if numbers need to be escaped as strings in this context.
+     * Default behavior is to return false.
+     */
+    virtual bool escapeNum() { return false; }
+  };
+
+  // Context class for object member key-value pairs
+  class JSONPairContext : public TJSONContext {
+
+  public:
+    JSONPairContext() : first_(true), colon_(true) {}
+
+    uint32_t write(TTransport& trans) override {
+      if (first_) {
+        first_ = false;
+        colon_ = true;
+        return 0;
+      } else {
+        trans.write(colon_ ? &kJSONPairSeparator : &kJSONElemSeparator, 1);
+        colon_ = !colon_;
+        return 1;
+      }
+    }
+
+    uint32_t read(TJSONProtocol::LookaheadReader& reader) override {
+      if (first_) {
+        first_ = false;
+        colon_ = true;
+        return 0;
+      } else {
+        uint8_t ch = (colon_ ? kJSONPairSeparator : kJSONElemSeparator);
+        colon_ = !colon_;
+        return readSyntaxChar(reader, ch);
+      }
+    }
+
+    // Numbers must be turned into strings if they are the key part of a pair
+    bool escapeNum() override { return colon_; }
+
+  private:
+    bool first_;
+    bool colon_;
+  };
+
+  // Context class for lists
+  class JSONListContext : public TJSONContext {
+
+  public:
+    JSONListContext() : first_(true) {}
+
+    uint32_t write(TTransport& trans) override {
+      if (first_) {
+        first_ = false;
+        return 0;
+      } else {
+        trans.write(&kJSONElemSeparator, 1);
+        return 1;
+      }
+    }
+
+    uint32_t read(TJSONProtocol::LookaheadReader& reader) override {
+      if (first_) {
+        first_ = false;
+        return 0;
+      } else {
+        return readSyntaxChar(reader, kJSONElemSeparator);
+      }
+    }
+
+  private:
+    bool first_;
+  };
+
+  TJSONProtocol::TJSONProtocol(std::shared_ptr<TTransport> ptrans)
+    : TVirtualProtocol<TJSONProtocol>(ptrans),
+      trans_(ptrans.get()),
+      context_(new TJSONContext()),
+      reader_(*ptrans) {
+  }
+
+  TJSONProtocol::~TJSONProtocol() = default;
+
+  void TJSONProtocol::pushContext(std::shared_ptr<TJSONContext> c) {
+    contexts_.push(context_);
+    context_ = c;
+  }
+
+  void TJSONProtocol::popContext() {
+    context_ = contexts_.top();
+    contexts_.pop();
+  }
+
+  // Write the character ch as a JSON escape sequence ("\u00xx")
+  uint32_t TJSONProtocol::writeJSONEscapeChar(uint8_t ch) {
+    trans_->write((const uint8_t*)kJSONEscapePrefix.c_str(),
+                  static_cast<uint32_t>(kJSONEscapePrefix.length()));
+    uint8_t outCh = hexChar(ch >> 4);
+    trans_->write(&outCh, 1);
+    outCh = hexChar(ch);
+    trans_->write(&outCh, 1);
+    return 6;
+  }
+
+  // Write the character ch as part of a JSON string, escaping as appropriate.
+  uint32_t TJSONProtocol::writeJSONChar(uint8_t ch) {
+    if (ch >= 0x30) {
+      if (ch == kJSONBackslash) { // Only special character >= 0x30 is '\'
+        trans_->write(&kJSONBackslash, 1);
+        trans_->write(&kJSONBackslash, 1);
+        return 2;
+      } else {
+        trans_->write(&ch, 1);
+        return 1;
+      }
+    } else {
+      uint8_t outCh = kJSONCharTable[ch];
+      // Check if regular character, backslash escaped, or JSON escaped
+      if (outCh == 1) {
+        trans_->write(&ch, 1);
+        return 1;
+      } else if (outCh > 1) {
+        trans_->write(&kJSONBackslash, 1);
+        trans_->write(&outCh, 1);
+        return 2;
+      } else {
+        return writeJSONEscapeChar(ch);
+      }
+    }
+  }
+
+  // Write out the contents of the string str as a JSON string, escaping
+  // characters as appropriate.
+  uint32_t TJSONProtocol::writeJSONString(const std::string& str) {
+    uint32_t result = context_->write(*trans_);
+    result += 2; // For quotes
+    trans_->write(&kJSONStringDelimiter, 1);
+    std::string::const_iterator iter(str.begin());
+    std::string::const_iterator end(str.end());
+    while (iter != end) {
+      result += writeJSONChar(*iter++);
+    }
+    trans_->write(&kJSONStringDelimiter, 1);
+    return result;
+  }
+
+  // Write out the contents of the string as JSON string, base64-encoding
+  // the string's contents, and escaping as appropriate
+  uint32_t TJSONProtocol::writeJSONBase64(const std::string& str) {
+    uint32_t result = context_->write(*trans_);
+    result += 2; // For quotes
+    trans_->write(&kJSONStringDelimiter, 1);
+    uint8_t b[4];
+    const auto* bytes = (const uint8_t*)str.c_str();
+    if (str.length() > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    auto len = static_cast<uint32_t>(str.length());
+    while (len >= 3) {
+      // Encode 3 bytes at a time
+      base64_encode(bytes, 3, b);
+      trans_->write(b, 4);
+      result += 4;
+      bytes += 3;
+      len -= 3;
+    }
+    if (len) { // Handle remainder
+      base64_encode(bytes, len, b);
+      trans_->write(b, len + 1);
+      result += len + 1;
+    }
+    trans_->write(&kJSONStringDelimiter, 1);
+    return result;
+  }
+
+  // Convert the given integer type to a JSON number, or a string
+  // if the context requires it (eg: key in a map pair).
+  template <typename NumberType>
+  uint32_t TJSONProtocol::writeJSONInteger(NumberType num) {
+    uint32_t result = context_->write(*trans_);
+    std::string val(::apache::thrift::to_string(num));
+    bool escapeNum = context_->escapeNum();
+    if (escapeNum) {
+      trans_->write(&kJSONStringDelimiter, 1);
+      result += 1;
+    }
+    if (val.length() > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    trans_->write((const uint8_t*)val.c_str(), static_cast<uint32_t>(val.length()));
+    result += static_cast<uint32_t>(val.length());
+    if (escapeNum) {
+      trans_->write(&kJSONStringDelimiter, 1);
+      result += 1;
+    }
+    return result;
+  }
+
+  namespace {
+  std::string doubleToString(double d) {
+    std::ostringstream str;
+    str.imbue(std::locale::classic());
+    const std::streamsize max_digits10 = 2 + std::numeric_limits<double>::digits10;
+    str.precision(max_digits10);
+    str << d;
+    return str.str();
+  }
+  }
+
+  // Convert the given double to a JSON string, which is either the number,
+  // "NaN" or "Infinity" or "-Infinity".
+  uint32_t TJSONProtocol::writeJSONDouble(double num) {
+    uint32_t result = context_->write(*trans_);
+    std::string val;
+
+    bool special = false;
+    switch (std::fpclassify(num)) {
+    case FP_INFINITE:
+      if (std::signbit(num)) {
+        val = kThriftNegativeInfinity;
+      } else {
+        val = kThriftInfinity;
+      }
+      special = true;
+      break;
+    case FP_NAN:
+      val = kThriftNan;
+      special = true;
+      break;
+    default:
+      val = doubleToString(num);
+      break;
+    }
+
+    bool escapeNum = special || context_->escapeNum();
+    if (escapeNum) {
+      trans_->write(&kJSONStringDelimiter, 1);
+      result += 1;
+    }
+    if (val.length() > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    trans_->write((const uint8_t*)val.c_str(), static_cast<uint32_t>(val.length()));
+    result += static_cast<uint32_t>(val.length());
+    if (escapeNum) {
+      trans_->write(&kJSONStringDelimiter, 1);
+      result += 1;
+    }
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeJSONObjectStart() {
+    uint32_t result = context_->write(*trans_);
+    trans_->write(&kJSONObjectStart, 1);
+    pushContext(std::shared_ptr<TJSONContext>(new JSONPairContext()));
+    return result + 1;
+  }
+
+  uint32_t TJSONProtocol::writeJSONObjectEnd() {
+    popContext();
+    trans_->write(&kJSONObjectEnd, 1);
+    return 1;
+  }
+
+  uint32_t TJSONProtocol::writeJSONArrayStart() {
+    uint32_t result = context_->write(*trans_);
+    trans_->write(&kJSONArrayStart, 1);
+    pushContext(std::shared_ptr<TJSONContext>(new JSONListContext()));
+    return result + 1;
+  }
+
+  uint32_t TJSONProtocol::writeJSONArrayEnd() {
+    popContext();
+    trans_->write(&kJSONArrayEnd, 1);
+    return 1;
+  }
+
+  uint32_t TJSONProtocol::writeMessageBegin(const std::string& name,
+                                            const TMessageType messageType,
+                                            const int32_t seqid) {
+    uint32_t result = writeJSONArrayStart();
+    result += writeJSONInteger(kThriftVersion1);
+    result += writeJSONString(name);
+    result += writeJSONInteger(messageType);
+    result += writeJSONInteger(seqid);
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeMessageEnd() {
+    return writeJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::writeStructBegin(const char* name) {
+    (void)name;
+    return writeJSONObjectStart();
+  }
+
+  uint32_t TJSONProtocol::writeStructEnd() {
+    return writeJSONObjectEnd();
+  }
+
+  uint32_t TJSONProtocol::writeFieldBegin(const char* name,
+                                          const TType fieldType,
+                                          const int16_t fieldId) {
+    (void)name;
+    uint32_t result = writeJSONInteger(fieldId);
+    result += writeJSONObjectStart();
+    result += writeJSONString(getTypeNameForTypeID(fieldType));
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeFieldEnd() {
+    return writeJSONObjectEnd();
+  }
+
+  uint32_t TJSONProtocol::writeFieldStop() {
+    return 0;
+  }
+
+  uint32_t TJSONProtocol::writeMapBegin(const TType keyType,
+                                        const TType valType,
+                                        const uint32_t size) {
+    uint32_t result = writeJSONArrayStart();
+    result += writeJSONString(getTypeNameForTypeID(keyType));
+    result += writeJSONString(getTypeNameForTypeID(valType));
+    result += writeJSONInteger((int64_t)size);
+    result += writeJSONObjectStart();
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeMapEnd() {
+    uint32_t result = writeJSONObjectEnd();
+    result += writeJSONArrayEnd();
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeListBegin(const TType elemType, const uint32_t size) {
+    uint32_t result = writeJSONArrayStart();
+    result += writeJSONString(getTypeNameForTypeID(elemType));
+    result += writeJSONInteger((int64_t)size);
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeListEnd() {
+    return writeJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::writeSetBegin(const TType elemType, const uint32_t size) {
+    uint32_t result = writeJSONArrayStart();
+    result += writeJSONString(getTypeNameForTypeID(elemType));
+    result += writeJSONInteger((int64_t)size);
+    return result;
+  }
+
+  uint32_t TJSONProtocol::writeSetEnd() {
+    return writeJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::writeBool(const bool value) {
+    return writeJSONInteger(value);
+  }
+
+  uint32_t TJSONProtocol::writeByte(const int8_t byte) {
+    // writeByte() must be handled specially because to_string sees
+    // int8_t as a text type instead of an integer type
+    return writeJSONInteger((int16_t)byte);
+  }
+
+  uint32_t TJSONProtocol::writeI16(const int16_t i16) {
+    return writeJSONInteger(i16);
+  }
+
+  uint32_t TJSONProtocol::writeI32(const int32_t i32) {
+    return writeJSONInteger(i32);
+  }
+
+  uint32_t TJSONProtocol::writeI64(const int64_t i64) {
+    return writeJSONInteger(i64);
+  }
+
+  uint32_t TJSONProtocol::writeDouble(const double dub) {
+    return writeJSONDouble(dub);
+  }
+
+  uint32_t TJSONProtocol::writeString(const std::string& str) {
+    return writeJSONString(str);
+  }
+
+  uint32_t TJSONProtocol::writeBinary(const std::string& str) {
+    return writeJSONBase64(str);
+  }
+
+  uint32_t TJSONProtocol::writeUUID(const ::apache::thrift::TUuid& uuid) {
+    return writeJSONString(::apache::thrift::to_string(uuid));
+  }
+
+  /**
+   * Reading functions
+   */
+
+  // Reads 1 byte and verifies that it matches ch.
+  uint32_t TJSONProtocol::readJSONSyntaxChar(uint8_t ch) {
+    return readSyntaxChar(reader_, ch);
+  }
+
+  // Decodes the four hex parts of a JSON escaped string character and returns
+  // the UTF-16 code unit via out.
+  uint32_t TJSONProtocol::readJSONEscapeChar(uint16_t* out) {
+    uint8_t b[4];
+    b[0] = reader_.read();
+    b[1] = reader_.read();
+    b[2] = reader_.read();
+    b[3] = reader_.read();
+
+    *out = (hexVal(b[0]) << 12)
+      + (hexVal(b[1]) << 8) + (hexVal(b[2]) << 4) + hexVal(b[3]);
+
+    return 4;
+  }
+
+  // Decodes a JSON string, including unescaping, and returns the string via str
+  uint32_t TJSONProtocol::readJSONString(std::string& str, bool skipContext) {
+    uint32_t result = (skipContext ? 0 : context_->read(reader_));
+    result += readJSONSyntaxChar(kJSONStringDelimiter);
+    std::vector<uint16_t> codeunits;
+    uint8_t ch;
+    str.clear();
+    while (true) {
+      ch = reader_.read();
+      ++result;
+      if (ch == kJSONStringDelimiter) {
+        break;
+      }
+      if (ch == kJSONBackslash) {
+        ch = reader_.read();
+        ++result;
+        if (ch == kJSONEscapeChar) {
+          uint16_t cp;
+          result += readJSONEscapeChar(&cp);
+          if (isHighSurrogate(cp)) {
+            codeunits.push_back(cp);
+          } else {
+            if (isLowSurrogate(cp)
+                && codeunits.empty()) {
+              throw TProtocolException(TProtocolException::INVALID_DATA,
+                                      "Missing UTF-16 high surrogate pair.");
+            }
+            codeunits.push_back(cp);
+            codeunits.push_back(0);
+            str += boost::locale::conv::utf_to_utf<char>(codeunits.data());
+            codeunits.clear();
+          }
+          continue;
+        } else {
+          size_t pos = kEscapeChars.find(ch);
+          if (pos == kEscapeChars.npos) {
+            throw TProtocolException(TProtocolException::INVALID_DATA,
+                                    "Expected control char, got '" + std::string((const char*)&ch, 1)
+                                    + "'.");
+          }
+          ch = kEscapeCharVals[pos];
+        }
+      }
+      if (!codeunits.empty()) {
+        throw TProtocolException(TProtocolException::INVALID_DATA,
+                                "Missing UTF-16 low surrogate pair.");
+      }
+      str += ch;
+    }
+
+    if (!codeunits.empty()) {
+      throw TProtocolException(TProtocolException::INVALID_DATA,
+                              "Missing UTF-16 low surrogate pair.");
+    }
+    return result;
+  }
+
+  // Reads a block of base64 characters, decoding it, and returns via str
+  uint32_t TJSONProtocol::readJSONBase64(std::string& str) {
+    std::string tmp;
+    uint32_t result = readJSONString(tmp);
+    auto* b = (uint8_t*)tmp.c_str();
+    if (tmp.length() > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    auto len = static_cast<uint32_t>(tmp.length());
+    str.clear();
+    // Ignore padding
+    if (len >= 2)  {
+      uint32_t bound = len - 2;
+      for (uint32_t i = len - 1; i >= bound && b[i] == '='; --i) {
+        --len;
+      }
+    }
+    while (len >= 4) {
+      base64_decode(b, 4);
+      str.append((const char*)b, 3);
+      b += 4;
+      len -= 4;
+    }
+    // Don't decode if we hit the end or got a single leftover byte (invalid
+    // base64 but legal for skip of regular string type)
+    if (len > 1) {
+      base64_decode(b, len);
+      str.append((const char*)b, len - 1);
+    }
+    return result;
+  }
+
+  // Reads a sequence of characters, stopping at the first one that is not
+  // a valid JSON numeric character.
+  uint32_t TJSONProtocol::readJSONNumericChars(std::string& str) {
+    uint32_t result = 0;
+    str.clear();
+    while (true) {
+      uint8_t ch = reader_.peek();
+      if (!isJSONNumeric(ch)) {
+        break;
+      }
+      reader_.read();
+      str += ch;
+      ++result;
+    }
+    return result;
+  }
+
+  namespace {
+  template <typename T>
+  T fromString(const std::string& s) {
+    T t;
+    std::istringstream str(s);
+    str.imbue(std::locale::classic());
+    str >> t;
+    if (str.bad() || !str.eof())
+      throw std::runtime_error(s);
+    return t;
+  }
+  }
+
+  // Reads a sequence of characters and assembles them into a number,
+  // returning them via num
+  template <typename NumberType>
+  uint32_t TJSONProtocol::readJSONInteger(NumberType& num) {
+    uint32_t result = context_->read(reader_);
+    if (context_->escapeNum()) {
+      result += readJSONSyntaxChar(kJSONStringDelimiter);
+    }
+    std::string str;
+    result += readJSONNumericChars(str);
+    try {
+      num = fromString<NumberType>(str);
+    } catch (const std::runtime_error&) {
+      throw TProtocolException(TProtocolException::INVALID_DATA,
+                              "Expected numeric value; got \"" + str + "\"");
+    }
+    if (context_->escapeNum()) {
+      result += readJSONSyntaxChar(kJSONStringDelimiter);
+    }
+    return result;
+  }
+
+  // Reads a JSON number or string and interprets it as a double.
+  uint32_t TJSONProtocol::readJSONDouble(double& num) {
+    uint32_t result = context_->read(reader_);
+    std::string str;
+    if (reader_.peek() == kJSONStringDelimiter) {
+      result += readJSONString(str, true);
+      // Check for NaN, Infinity and -Infinity
+      if (str == kThriftNan) {
+        num = HUGE_VAL / HUGE_VAL; // generates NaN
+      } else if (str == kThriftInfinity) {
+        num = HUGE_VAL;
+      } else if (str == kThriftNegativeInfinity) {
+        num = -HUGE_VAL;
+      } else {
+        if (!context_->escapeNum()) {
+          // Throw exception -- we should not be in a string in this case
+          throw TProtocolException(TProtocolException::INVALID_DATA,
+                                      "Numeric data unexpectedly quoted");
+        }
+        try {
+          num = fromString<double>(str);
+        } catch (const std::runtime_error&) {
+          throw TProtocolException(TProtocolException::INVALID_DATA,
+                                      "Expected numeric value; got \"" + str + "\"");
+        }
+      }
+    } else {
+      if (context_->escapeNum()) {
+        // This will throw - we should have had a quote if escapeNum == true
+        readJSONSyntaxChar(kJSONStringDelimiter);
+      }
+      result += readJSONNumericChars(str);
+      try {
+        num = fromString<double>(str);
+      } catch (const std::runtime_error&) {
+        throw TProtocolException(TProtocolException::INVALID_DATA,
+                                    "Expected numeric value; got \"" + str + "\"");
+      }
+    }
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readJSONObjectStart() {
+    uint32_t result = context_->read(reader_);
+    result += readJSONSyntaxChar(kJSONObjectStart);
+    pushContext(std::shared_ptr<TJSONContext>(new JSONPairContext()));
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readJSONObjectEnd() {
+    uint32_t result = readJSONSyntaxChar(kJSONObjectEnd);
+    popContext();
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readJSONArrayStart() {
+    uint32_t result = context_->read(reader_);
+    result += readJSONSyntaxChar(kJSONArrayStart);
+    pushContext(std::shared_ptr<TJSONContext>(new JSONListContext()));
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readJSONArrayEnd() {
+    uint32_t result = readJSONSyntaxChar(kJSONArrayEnd);
+    popContext();
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readMessageBegin(std::string& name,
+                                          TMessageType& messageType,
+                                          int32_t& seqid) {
+    uint32_t result = readJSONArrayStart();
+    int64_t tmpVal = 0;
+    result += readJSONInteger(tmpVal);
+    if (tmpVal != kThriftVersion1) {
+      throw TProtocolException(TProtocolException::BAD_VERSION, "Message contained bad version.");
+    }
+    result += readJSONString(name);
+    result += readJSONInteger(tmpVal);
+    messageType = (TMessageType)tmpVal;
+    result += readJSONInteger(tmpVal);
+    if (tmpVal > (std::numeric_limits<int32_t>::max)() ||
+        tmpVal < (std::numeric_limits<int32_t>::min)())
+      throw TProtocolException(TProtocolException::INVALID_DATA, "sequence id is not int32_t");
+    seqid = static_cast<int32_t>(tmpVal);
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readMessageEnd() {
+    return readJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::readStructBegin(std::string& name) {
+    (void)name;
+    return readJSONObjectStart();
+  }
+
+  uint32_t TJSONProtocol::readStructEnd() {
+    return readJSONObjectEnd();
+  }
+
+  uint32_t TJSONProtocol::readFieldBegin(std::string& name, TType& fieldType, int16_t& fieldId) {
+    (void)name;
+    uint32_t result = 0;
+    // Check if we hit the end of the list
+    uint8_t ch = reader_.peek();
+    if (ch == kJSONObjectEnd) {
+      fieldType = apache::thrift::protocol::T_STOP;
+    } else {
+      uint64_t tmpVal = 0;
+      std::string tmpStr;
+      result += readJSONInteger(tmpVal);
+      if (tmpVal > static_cast<uint32_t>((std::numeric_limits<int16_t>::max)()))
+        throw TProtocolException(TProtocolException::SIZE_LIMIT);
+      fieldId = static_cast<int16_t>(tmpVal);
+      result += readJSONObjectStart();
+      result += readJSONString(tmpStr);
+      fieldType = getTypeIDForTypeName(tmpStr);
+    }
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readFieldEnd() {
+    return readJSONObjectEnd();
+  }
+
+  uint32_t TJSONProtocol::readMapBegin(TType& keyType, TType& valType, uint32_t& size) {
+    uint64_t tmpVal = 0;
+    std::string tmpStr;
+    uint32_t result = readJSONArrayStart();
+    result += readJSONString(tmpStr);
+    keyType = getTypeIDForTypeName(tmpStr);
+    result += readJSONString(tmpStr);
+    valType = getTypeIDForTypeName(tmpStr);
+    result += readJSONInteger(tmpVal);
+    if (tmpVal > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    size = static_cast<uint32_t>(tmpVal);
+    result += readJSONObjectStart();
+
+    TMap map(keyType, valType, size);
+    checkReadBytesAvailable(map);
+
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readMapEnd() {
+    uint32_t result = readJSONObjectEnd();
+    result += readJSONArrayEnd();
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readListBegin(TType& elemType, uint32_t& size) {
+    uint64_t tmpVal = 0;
+    std::string tmpStr;
+    uint32_t result = readJSONArrayStart();
+    result += readJSONString(tmpStr);
+    elemType = getTypeIDForTypeName(tmpStr);
+    result += readJSONInteger(tmpVal);
+    if (tmpVal > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    size = static_cast<uint32_t>(tmpVal);
+
+    TList list(elemType, size);
+    checkReadBytesAvailable(list);
+
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readListEnd() {
+    return readJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::readSetBegin(TType& elemType, uint32_t& size) {
+    uint64_t tmpVal = 0;
+    std::string tmpStr;
+    uint32_t result = readJSONArrayStart();
+    result += readJSONString(tmpStr);
+    elemType = getTypeIDForTypeName(tmpStr);
+    result += readJSONInteger(tmpVal);
+    if (tmpVal > (std::numeric_limits<uint32_t>::max)())
+      throw TProtocolException(TProtocolException::SIZE_LIMIT);
+    size = static_cast<uint32_t>(tmpVal);
+
+    TSet set(elemType, size);
+    checkReadBytesAvailable(set);
+
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readSetEnd() {
+    return readJSONArrayEnd();
+  }
+
+  uint32_t TJSONProtocol::readBool(bool& value) {
+    return readJSONInteger(value);
+  }
+
+  // readByte() must be handled properly because boost::lexical cast sees int8_t
+  // as a text type instead of an integer type
+  uint32_t TJSONProtocol::readByte(int8_t& byte) {
+    auto tmp = (int16_t)byte;
+    uint32_t result = readJSONInteger(tmp);
+    assert(tmp < 256);
+    byte = (int8_t)tmp;
+    return result;
+  }
+
+  uint32_t TJSONProtocol::readI16(int16_t& i16) {
+    return readJSONInteger(i16);
+  }
+
+  uint32_t TJSONProtocol::readI32(int32_t& i32) {
+    return readJSONInteger(i32);
+  }
+
+  uint32_t TJSONProtocol::readI64(int64_t& i64) {
+    return readJSONInteger(i64);
+  }
+
+  uint32_t TJSONProtocol::readDouble(double& dub) {
+    return readJSONDouble(dub);
+  }
+
+  uint32_t TJSONProtocol::readString(std::string& str) {
+    return readJSONString(str);
+  }
+
+  uint32_t TJSONProtocol::readBinary(std::string& str) {
+    return readJSONBase64(str);
+  }
+
+  uint32_t TJSONProtocol::readUUID(::apache::thrift::TUuid& uuid) {
+    std::string uuid_str;
+    const uint32_t result = readJSONString(uuid_str);
+    uuid = ::apache::thrift::TUuid{uuid_str};
+    return result;
+  }
+
+  // Return the minimum number of bytes a type will consume on the wire
+  int TJSONProtocol::getMinSerializedSize(TType type)
+  {
+    switch (type)
+    {
+      case T_STOP: return 0;
+      case T_VOID: return 0;
+      case T_BOOL: return 1;  // written as int
+      case T_BYTE: return 1;
+      case T_DOUBLE: return 1;
+      case T_I16: return 1;
+      case T_I32: return 1;
+      case T_I64: return 1;
+      case T_STRING: return 2;  // empty string
+      case T_STRUCT: return 2;  // empty struct
+      case T_MAP: return 2;  // empty map
+      case T_SET: return 2;  // empty set
+      case T_LIST: return 2;  // empty list
+      case T_UUID: return 16;  // empty UUID
+      default: throw TProtocolException(TProtocolException::UNKNOWN, "unrecognized type code");
+    }
+  }
   
   } // my_thrift::apache::thrift::protocol
+
+  // ***TJSONProtocol.h***
+  template <typename ThriftStruct>
+  std::string ThriftJSONString(const ThriftStruct& ts) {
+    using namespace ::my_thrift::apache::thrift::transport;
+    using namespace ::my_thrift::apache::thrift::protocol;
+    auto* buffer = new TMemoryBuffer;
+    std::shared_ptr<TTransport> trans(buffer);
+    TJSONProtocol protocol(trans);
+
+    ts.write(&protocol);
+
+    uint8_t* buf;
+    uint32_t size;
+    buffer->getBuffer(&buf, &size);
+    return std::string((char*)buf, (unsigned int)size);
+  }
   
   // ***TApplicationException.h***
   class TApplicationException : public ::apache::thrift::TException {
@@ -6922,7 +8460,6 @@ namespace thrift {
   TConnectedClient::~TConnectedClient() = default;
 
   void TConnectedClient::run() {
-    auto& replayer = PacketReplaySocket::getInstance();
     if (eventHandler_) {
       opaqueContext_ = eventHandler_->createContext(inputProtocol_, outputProtocol_);
     }
@@ -6936,7 +8473,6 @@ namespace thrift {
         if (!processor_->process(inputProtocol_, outputProtocol_, opaqueContext_)) { //to TDispatchProcessor.h:108
           break;
         }
-        done = replayer.isEOF();
       } catch (const TTransportException& ttx) {
         switch (ttx.getType()) {
           case TTransportException::END_OF_FILE:
@@ -6964,7 +8500,7 @@ namespace thrift {
       }
     }
 
-    // cleanup();
+    cleanup();
   }
 
   void TConnectedClient::cleanup() {
@@ -7235,7 +8771,7 @@ namespace thrift {
     }
 
     // Fetch client from server
-    // for (;;) {
+    for (;;) {
       try {
         // Dereference any resources from any previous client creation
         // such that a blocking accept does not hold them indefinitely.
@@ -7256,7 +8792,7 @@ namespace thrift {
         }
 
         client = serverTransport_->accept();
-        
+
         inputTransport = inputTransportFactory_->getTransport(client);
         outputTransport = outputTransportFactory_->getTransport(client);
         if (!outputProtocolFactory_) {
@@ -7282,20 +8818,20 @@ namespace thrift {
         if (ttx.getType() == TTransportException::TIMED_OUT
             || ttx.getType() == TTransportException::CLIENT_DISCONNECT) {
           // Accept timeout and client disconnect - continue processing.
-          // continue;
+          continue;
         } else if (ttx.getType() == TTransportException::END_OF_FILE
                   || ttx.getType() == TTransportException::INTERRUPTED) {
           // Server was interrupted.  This only happens when stopping.
-          // break;
+          break;
         } else {
           // All other transport exceptions are logged.
           // State of connection is unknown.  Done.
           string errStr = string("TServerTransport died: ") + ttx.what();
           GlobalOutput(errStr.c_str());
-          // break;
+          break;
         }
       }
-    // }
+    }
 
     releaseOneDescriptor("serverTransport", serverTransport_);
   }
@@ -7708,356 +9244,6 @@ namespace thrift {
 }
 }
 } // my_thrift 
-
-enum OpType {
-   SET,
-   GET
-};
-
-class MemcachedBusinessLogic {
-private:
-    // Reference to the global storage instance from memcached
-    LIBEVENT_THREAD thread;
-    std::mutex mutex_;
-    struct event_base *main_base;
-    struct event clockevent;
-    std::thread event_thread;
-
-   using ResponseCallback = std::function<void(OpType, bool, size_t)>;
-   using BufferCallback = std::function<void(uint8_t*)>;
-   // Original allocated pointers
-   uint8_t* raw_recv_buf_;
-   uint8_t* raw_resp_buf_;
-   // Aligned pointers for use
-   uint8_t* recv_buf_;    // Receive Buffer
-   uint8_t* resp_buf_;    // Response Buffer 
-   ResponseCallback send_resp;
-   BufferCallback send_buf;
-
-   static constexpr size_t BUFFER_SIZE = 1024 * 1024;
-
-   std::chrono::microseconds total_processing_time_{0};
-   std::chrono::microseconds constructor_time_{0};
-   std::chrono::microseconds callback_init_time_{0};
-   std::chrono::microseconds buffer_access_time_{0};
-   std::chrono::microseconds destructor_time_{0};
-
-   static void clock_handler(evutil_socket_t fd, short which, void *arg) {
-      struct timeval t = {.tv_sec = 1, .tv_usec = 0};
-      // struct timespec ts;
-
-      // // Update current_time
-      // if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
-      //     struct timeval tv;
-      //     gettimeofday(&tv, NULL);
-      //     current_time = (rel_time_t)(tv.tv_sec - process_started);
-
-      // } else {
-      //     current_time = (rel_time_t)(ts.tv_sec - process_started);
-      // }
-
-      // Reschedule timer
-      MemcachedBusinessLogic *handler = (MemcachedBusinessLogic *)arg;
-      evtimer_del(&handler->clockevent);
-      evtimer_set(&handler->clockevent, clock_handler, handler);
-      event_base_set(handler->main_base, &handler->clockevent);
-      evtimer_add(&handler->clockevent, &t);
-   }
-
-public:
-   MemcachedBusinessLogic() {
-      auto start = std::chrono::high_resolution_clock::now();
-      // Initialize settings
-      settings.use_cas = true;
-      settings.maxbytes = static_cast<size_t>(4ULL * 1024 * 1024 * 1024); // 4GB
-      settings.maxconns = 1024;
-      settings.factor = 1.25;
-      settings.chunk_size = 256;
-      settings.num_threads = 1;
-      settings.item_size_max = 1024 * 1024;
-      settings.slab_page_size = 1024 * 1024;
-      settings.slab_chunk_size_max = settings.slab_page_size / 2;
-      settings.hashpower_init = 0;
-      settings.oldest_live = 0;
-      current_time = std::numeric_limits<rel_time_t>::max(); // Max time avoids flush
-
-      enum hashfunc_type hash_type = MURMUR3_HASH;
-
-      if (hash_init(hash_type) != 0) {
-        throw std::runtime_error("Failed to initialize hash_algorithm!\n");
-      }
-      
-      // Initialize stats
-      memset(&stats, 0, sizeof(struct stats));
-      memset(&stats_state, 0, sizeof(struct stats_state));
-      stats_state.accepting_conns = true;
-      process_started = time(0) - ITEM_UPDATE_INTERVAL - 2;
-      stats_prefix_init(settings.prefix_delimiter);
-
-      // Initialize subsystems
-      slabs_init(settings.maxbytes, settings.factor, true, nullptr, nullptr, false);
-      assoc_init(settings.hashpower_init);
-      memcached_thread_init(settings.num_threads, nullptr);
-      
-      // Initialize thread stats
-      threadlocal_stats_reset();
-      void *result = slabs_alloc(48, 1, 0);
-      std::cerr << "Initial slab allocation: " << result << std::endl;
-      // if (!slabs_alloc(settings.chunk_size, 1, 0)) {
-      //     throw std::runtime_error("Failed to initialize storage");
-      // }
-
-      // Initialize thread
-      memset(&thread, 0, sizeof(LIBEVENT_THREAD));
-
-      // Initialize event base
-      main_base = event_base_new();
-      if (!main_base) {
-        throw std::runtime_error("Failed to create event base");
-      }
-
-      // Setup timer
-      struct timeval t = {.tv_sec = 1, .tv_usec = 0};
-      evtimer_set(&clockevent, clock_handler, this);
-      event_base_set(main_base, &clockevent);
-      evtimer_add(&clockevent, &t);
-
-      // Start event loop
-      event_thread = std::thread([this]() {
-          event_base_dispatch(main_base);
-      });
-      event_thread.detach();
-
-      // Allocate aligned buffers
-      raw_recv_buf_ = new uint8_t[BUFFER_SIZE + 0x10];  // Extra space for alignment
-      raw_resp_buf_ = new uint8_t[BUFFER_SIZE + 0x10];
-
-      recv_buf_ = allocateAlignedBuffer(raw_recv_buf_);
-      resp_buf_ = allocateAlignedBuffer(raw_resp_buf_);
-
-      auto end = std::chrono::high_resolution_clock::now();
-      constructor_time_ = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    }
-
-   std::chrono::microseconds getTotalBusinessLogicTime() const {
-        return total_processing_time_ + constructor_time_ + 
-               callback_init_time_ + buffer_access_time_ + destructor_time_;
-        // return total_processing_time_;
-   }
-   
-   uint8_t* allocateAlignedBuffer(uint8_t* raw_buf) {
-       // Find next address ending in 0
-       uintptr_t addr = reinterpret_cast<uintptr_t>(raw_buf);
-       uintptr_t aligned_addr = (addr + 0xF) & ~0xF;
-       while((aligned_addr & 0xF) != 0x0) {
-           aligned_addr += 0x10;
-       }
-
-       printf("Original address: 0x%lx\n", addr);
-       printf("Aligned address: 0x%lx\n", aligned_addr);
-       printf("===============================\n");
-
-       return reinterpret_cast<uint8_t*>(aligned_addr);
-   }
-
-   // Get pointer to receive buffer
-   uint8_t* getRecvBuffer() {
-       printf("Using recv buffer at: 0x%lx\n",
-              reinterpret_cast<uintptr_t>(recv_buf_));
-       printf("====================================\n");
-       return recv_buf_;
-   }
-
-   void handleReq(OpType op, size_t keylen, size_t valuelen = 0) {
-      auto start = std::chrono::high_resolution_clock::now();
-      auto& logger = PacketLogger::getInstance();
-      
-      // Create vectors from buffer data
-      std::vector<int8_t> key(recv_buf_, recv_buf_ + keylen);
-      
-      if (op == GET) {
-          std::vector<int8_t> req_data(recv_buf_, recv_buf_ + keylen);
-          logger.logRPCToLogic(req_data, keylen, valuelen, true);
-          // logger.logRPCToLogic(recv_buf_, keylen + valuelen);
-          std::vector<int8_t> value;
-          bool success = handleGet(key, value);
-          
-          if (success) {
-              // Copy value to response buffer
-              memcpy(resp_buf_, value.data(), value.size());
-              logger.logLogicToRPC(value, keylen, value.size(), true);
-              // logger.logLogicToRPC(resp_buf_, value.size());
-              send_resp(GET, true, value.size());
-              send_buf(resp_buf_);  // Send pointer to response buffer
-          } else {
-              send_resp(GET, false, 0);
-          }
-      } else { // SET
-          std::vector<int8_t> value(recv_buf_ + keylen, recv_buf_ + keylen + valuelen);
-          std::vector<int8_t> req_data(recv_buf_, recv_buf_ + keylen + valuelen);
-          logger.logRPCToLogic(req_data, keylen, valuelen, false);
-          // logger.logRPCToLogic(recv_buf_, keylen + valuelen);
-          bool success = handleSet(key, value);
-          send_resp(SET, success, 0);
-      }
-      auto end = std::chrono::high_resolution_clock::now();
-      total_processing_time_ += std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-   }
-
-   bool handleGet(const std::vector<int8_t>& key, std::vector<int8_t>& value) {
-      // Convert key to string for memcached API
-      std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
-      // printf("GET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
-
-      // Get the item directly from cache
-      item* it = item_get(key_str.c_str(), key_str.length(), &thread, true);
-      
-      if (it != nullptr) {
-          // Extract value from item
-          const char* value_ptr = ITEM_data(it);
-          size_t value_len = it->nbytes;
-          
-          // Copy value to return buffer
-          value.assign(reinterpret_cast<const int8_t*>(value_ptr),
-                      reinterpret_cast<const int8_t*>(value_ptr + value_len));
-          
-          // printf("GET attempt with value size: %zu, Value content: ", value.size());
-          // for(size_t i = 0; i < value.size(); i++) {
-          //     printf("%02x ", value[i]);
-          // }
-          // printf("\n"); 
-
-          // Release our reference
-          item_remove(it);
-      } else {
-        std::cout << "Item not found for key: " << key_str << std::endl;
-        value.clear();
-        return false;
-      }
-      return true;
-   }
-
-   bool handleSet(const std::vector<int8_t>& key, const std::vector<int8_t>& value) {
-      // Convert key and value to strings for memcached API
-      std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
-      std::string value_str(reinterpret_cast<const char*>(value.data()), value.size());
-      // printf("SET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
-
-      // printf("SET attempt with value size: %zu, value content: ", value.size());
-      // for(size_t i = 0; i < value.size(); i++) {
-      //     printf("%02x ", value[i]);
-      // }
-      // printf("\n");
-      
-      // Allocate new item
-      item* it = item_alloc(key_str.c_str(), key_str.length(), 0, 0, value.size());
-      if (it == nullptr) {
-        std::cerr << "item_alloc failed" << std::endl;
-          return false;
-      }
-      
-      // Copy value into item
-      memcpy(ITEM_data(it), value.data(), value.size());
-      
-      // Store the item
-      enum store_item_type status = store_item(it, NREAD_SET, &thread, nullptr, nullptr, 0, false);
-      // std::cerr << "store_item returned:" << status << std::endl;
-      return (status == STORED);
-   } 
-
-   // Response interface to service handler
-   void setCallbacks(ResponseCallback resp_cb, BufferCallback buf_cb) {
-      auto start = std::chrono::high_resolution_clock::now();
-      send_resp = resp_cb;
-      send_buf = buf_cb;
-      auto end = std::chrono::high_resolution_clock::now();
-      callback_init_time_ = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-   }
-
-   ~MemcachedBusinessLogic() {
-      auto start = std::chrono::high_resolution_clock::now();
-      // Delete original allocated memory
-      delete[] raw_recv_buf_;
-      delete[] raw_resp_buf_;
-
-      if (main_base) {
-          event_base_loopbreak(main_base);
-          event_base_free(main_base);
-      }
-      auto end = std::chrono::high_resolution_clock::now();
-      destructor_time_ = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-   }
-};
-
-class PacketReplayer {
-  public:
-    struct EnhancedHeader {
-        uint64_t timestamp;
-        uint16_t keyLength;
-        uint16_t valueLength;
-        uint8_t requestType;  // SET = 0, GET = 1
-    };
-
-    static void replayToMemcached(const std::string& logfile, MemcachedBusinessLogic& logic) {
-        logic.setCallbacks(printCallback, bufferCallback);
-
-        std::ifstream file(logfile, std::ios::binary);
-        if (!file.is_open()) {
-            printf("Failed to open log file: %s\n", logfile.c_str());
-            return;
-        }
-
-        EnhancedHeader header;
-        uint64_t last_timestamp = 0;
-
-        while (file.read(reinterpret_cast<char*>(&header), sizeof(header))) {
-            // Total length is sum of key and value lengths
-            size_t total_length = header.keyLength + header.valueLength;
-            std::vector<int8_t> data(total_length);
-            
-            if (!file.read(reinterpret_cast<char*>(data.data()), total_length)) {
-                printf("Failed to read packet data\n");
-                break;
-            }
-
-            // Handle timing
-            if (last_timestamp != 0) {
-                uint64_t delay = header.timestamp - last_timestamp;
-                std::this_thread::sleep_for(std::chrono::microseconds(delay));
-            }
-            last_timestamp = header.timestamp;
-
-            // Copy to business logic's receive buffer
-            memcpy(logic.getRecvBuffer(), data.data(), total_length);
-            
-            // Process packet based on request type
-            OpType op = header.requestType == 0 ? SET : GET;
-            logic.handleReq(op, header.keyLength, header.valueLength);
-            
-            printf("Processed packet - Key length: %d, Value length: %d, Type: %s\n", 
-                   header.keyLength, header.valueLength, op == GET ? "GET" : "SET");
-        }
-    }
-
-private:
-    static void printCallback(OpType op, bool success, uint16_t len) {
-        printf("Operation: %s, Success: %d, Length: %d\n", 
-               op == GET ? "GET" : "SET", success, len);
-    }
-
-    static void bufferCallback(uint8_t* buf) {
-        printf("Buffer callback received\n");
-    }
-};
 
 namespace thrift_memcached {
 
@@ -9385,109 +10571,174 @@ bool MemcachedServiceConcurrentClient::recv_setRequest(const int32_t seqid)
   // ***MemcachedServer.cpp(Actual Service Handler)***
   class MemcachedServiceHandler : virtual public MemcachedServiceIf {
   private:
-     bool ready_for_request{false};
-     bool set_success_{false};
-     MemcachedBusinessLogic* business_logic_{nullptr};
-     uint8_t* recv_buffer_;          // Points to business logic's buffer
-     std::vector<int8_t> current_response_;
-  public:
-     void setBusinessLogic(MemcachedBusinessLogic* logic) {
-         business_logic_ = logic;
-     }
+    // Reference to the global storage instance from memcached
+    LIBEVENT_THREAD thread;
+    std::mutex mutex_;
+    struct event_base *main_base;
+    struct event clockevent;
+    std::thread event_thread;
 
-     void initCallbacks() {
-        business_logic_->setCallbacks(
-            // Response callback that handles both SET and GET
-            [this](OpType op, bool success, size_t len) {
-                if (op == GET) {
-                    if (success) {
-                        current_response_.resize(len);
-                    } else {
-                        current_response_.clear();
-                    }
-                } else { // SET
-                    set_success_ = success;
-                }
-            },
-            // Buffer callback (only for GET)
-            [this](uint8_t* resp_buf) {
-                memcpy(current_response_.data(), resp_buf, current_response_.size());
-            }
-        );
-    }
+    static void clock_handler(evutil_socket_t fd, short which, void *arg) {
+      struct timeval t = {.tv_sec = 1, .tv_usec = 0};
+      struct timespec ts;
 
-    void setRecvBuffer(uint8_t* buf) {
-       recv_buffer_ = buf;
-       if (business_logic_) {
-           initCallbacks();
-           ready_for_request = true;
-       }
-   }
-   
-   void getRequest(std::vector<int8_t>& _return, const std::vector<int8_t>& key) override {
-       if (!ready_for_request || !business_logic_) {
-           throw ::apache::thrift::TException("Service not ready");
-       }
-
-       memcpy(recv_buffer_, key.data(), key.size());
-       business_logic_->handleReq(GET, key.size());
-       _return = current_response_;
-   }
-
-   bool setRequest(const std::vector<int8_t>& key, const std::vector<int8_t>& value) override {
-       if (!ready_for_request || !business_logic_) {
-           throw ::apache::thrift::TException("Service not ready");
-       }
-
-       memcpy(recv_buffer_, key.data(), key.size());
-       memcpy(recv_buffer_ + key.size(), value.data(), value.size());
-
-       business_logic_->handleReq(SET, key.size(), value.size());
-       return set_success_;
-   }
-     
-   };
-} // namespace thrift_memcached
-
-
-int main(int argc, char **argv) {
-
-    // MemcachedBusinessLogic logic;
-    // PacketReplayer::replayToMemcached("rpc_to_logic.log", logic);
-    // return 0;
-
-    // Default mode
-    execution_mode = "file";
-
-    // Parse command-line arguments
-    for (int i = 1; i < argc; ++i) {
-      std::string arg = argv[i];
-      if (arg.find("--mode=") == 0)
-        execution_mode = arg.substr(7);
-    }
-
-    if (execution_mode != "dpdk" && execution_mode != "file") {
-        std::cerr << "Invalid mode: " << execution_mode << ". Use --mode=dpdk or --mode=file." << std::endl;
-        return 1;
-    }
-
-    std::cout << "Running in " << execution_mode << " mode" << std::endl;
-
-    if (execution_mode == "dpdk") {
-      auto& logger = PacketLogger::getInstance();
-      logger.initializeLogFiles(".");
-
-      // Initialize DPDK first
-      auto& dpdk = DPDKHandler::getInstance();
-      if (!dpdk.init(0)) {
-          std::cerr << "Failed to initialize DPDK" << std::endl;
-          return 1;
+      // Update current_time
+      if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
+          struct timeval tv;
+          gettimeofday(&tv, NULL);
+          current_time = (rel_time_t)(tv.tv_sec - process_started);
+      } else {
+          current_time = (rel_time_t)(ts.tv_sec - process_started);
       }
 
-      // Start DPDK polling
-      dpdk.startPolling();
+      // Reschedule timer
+      MemcachedServiceHandler *handler = (MemcachedServiceHandler *)arg;
+      evtimer_del(&handler->clockevent);
+      evtimer_set(&handler->clockevent, clock_handler, handler);
+      event_base_set(handler->main_base, &handler->clockevent);
+      evtimer_add(&handler->clockevent, &t);
     }
 
+  public:
+    MemcachedServiceHandler() {
+      // Initialize settings
+      settings.use_cas = true;
+      settings.maxbytes = static_cast<size_t>(4ULL * 1024 * 1024 * 1024); // 4GB
+      settings.maxconns = 1024;
+      settings.factor = 1.25;
+      settings.chunk_size = 256;
+      settings.num_threads = 1;
+      settings.item_size_max = 1024 * 1024;
+      settings.slab_page_size = 1024 * 1024;
+      settings.slab_chunk_size_max = settings.slab_page_size / 2;
+      settings.hashpower_init = 0;
+      settings.oldest_live = 0;
+
+      enum hashfunc_type hash_type = MURMUR3_HASH;
+
+      if (hash_init(hash_type) != 0) {
+        throw std::runtime_error("Failed to initialize hash_algorithm!\n");
+    }
+      
+      // Initialize stats
+      memset(&stats, 0, sizeof(struct stats));
+      memset(&stats_state, 0, sizeof(struct stats_state));
+      stats_state.accepting_conns = true;
+      process_started = time(0) - ITEM_UPDATE_INTERVAL - 2;
+      stats_prefix_init(settings.prefix_delimiter);
+
+      // Initialize subsystems
+      slabs_init(settings.maxbytes, settings.factor, true, nullptr, nullptr, false);
+      assoc_init(settings.hashpower_init);
+      memcached_thread_init(settings.num_threads, nullptr);
+      
+      // Initialize thread stats
+      threadlocal_stats_reset();
+      void *result = slabs_alloc(48, 1, 0);
+      std::cerr << "Initial slab allocation: " << result << std::endl;
+      // if (!slabs_alloc(settings.chunk_size, 1, 0)) {
+      //     throw std::runtime_error("Failed to initialize storage");
+      // }
+
+      // Initialize thread
+      memset(&thread, 0, sizeof(LIBEVENT_THREAD));
+
+      // Initialize event base
+       main_base = event_base_new();
+       if (!main_base) {
+           throw std::runtime_error("Failed to create event base");
+       }
+
+       // Setup timer
+       struct timeval t = {.tv_sec = 1, .tv_usec = 0};
+       evtimer_set(&clockevent, clock_handler, this);
+       event_base_set(main_base, &clockevent);
+       evtimer_add(&clockevent, &t);
+
+       // Start event loop
+       event_thread = std::thread([this]() {
+           event_base_dispatch(main_base);
+       });
+       event_thread.detach();
+    }
+
+    void getRequest(std::vector<int8_t>& _return, const std::vector<int8_t>& key) override {
+      // std::lock_guard<std::mutex> lock(mutex_);
+      std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
+      // printf("GET attempt with key size: %zu, key content: ", key.size());
+      // for(size_t i = 0; i < key.size(); i++) {
+      //     printf("%02x ", key[i]);
+      // }
+      // printf("\n");
+      // Calculate hash value for key
+      // uint32_t hv = hash(key_str.c_str(), key_str.length());
+      
+      // Get the item directly from cache
+      item* it = item_get(key_str.c_str(), key_str.length(), &thread, true);
+      
+      if (it != nullptr) {
+          // Extract value from item
+          const char* value_ptr = ITEM_data(it);
+          size_t value_len = it->nbytes;
+          
+          // Copy value to return buffer
+          _return.assign(reinterpret_cast<const int8_t*>(value_ptr),
+                      reinterpret_cast<const int8_t*>(value_ptr + value_len));
+          
+          // Release our reference
+          item_remove(it);
+      } else {
+        std::cout << "Item not found for key: " << key_str << std::endl;
+        _return.clear();
+      }
+    }
+
+    bool setRequest(const std::vector<int8_t>& key, const std::vector<int8_t>& value) override {
+      // std::lock_guard<std::mutex> lock(mutex_);
+      std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
+//       printf("SET attempt with key size: %zu, key content: ", key.size());
+//       for(size_t i = 0; i < key.size(); i++) {
+//           printf("%02x ", key[i]);
+//       }
+//       printf("\n");
+//
+//         printf("SET attempt with value size: %zu, value content: ", value.size());
+//         for(size_t i = 0; i < value.size(); i++) {
+//             printf("%02x ", value[i]);
+//         }
+//         printf("\n");
+
+      // std::cerr << "Setting key:" << key_str << " value len:" << value.size() << std::endl;
+      // Calculate hash
+      // uint32_t hv = hash(key_str.c_str(), key_str.length());
+      // size_t used_slabs = slabs_clsid(settings.item_size_max);
+      // std::cerr << "Used slabs: " << used_slabs << std::endl;
+      // Allocate new item
+      item* it = item_alloc(key_str.c_str(), key_str.length(), 0, 0, value.size());
+      if (it == nullptr) {
+        std::cerr << "item_alloc failed" << std::endl;
+          return false;
+      }
+      
+      // Copy value into item
+      memcpy(ITEM_data(it), value.data(), value.size());
+      
+      // Store the item
+      enum store_item_type status = store_item(it, NREAD_SET, &thread, nullptr, nullptr, 0, false);
+      // std::cerr << "store_item returned:" << status << std::endl;
+      return (status == STORED);
+    }
+
+    ~MemcachedServiceHandler() {
+      if (main_base) {
+          event_base_loopbreak(main_base);
+          event_base_free(main_base);
+      }
+    }
+  };
+} // namespace thrift_memcached
+
+int main(int argc, char **argv) {
     using namespace thrift_memcached;
     using namespace my_thrift::apache::thrift;
     using namespace my_thrift::apache::thrift::protocol;
@@ -9495,47 +10746,16 @@ int main(int argc, char **argv) {
     using namespace my_thrift::apache::thrift::server;
     
     int port = 9090;
-
-    // Create handler first
-    auto handler = std::make_shared<MemcachedServiceHandler>();
-
-    // Create business logic 
-    auto business_logic = std::unique_ptr<MemcachedBusinessLogic>(new MemcachedBusinessLogic());
-    
-    // Get buffer from business logic and pass to handler
-    handler->setBusinessLogic(business_logic.get());
-    handler->setRecvBuffer(business_logic->getRecvBuffer());
-    
-    //::std::shared_ptr<MemcachedServiceHandler> handler(new MemcachedServiceHandler());
+    ::std::shared_ptr<MemcachedServiceHandler> handler(new MemcachedServiceHandler());
     ::std::shared_ptr<TProcessor> processor(new MemcachedServiceProcessor(handler));
     ::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
     ::std::shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     ::std::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    // ::std::shared_ptr<TProtocolFactory> protocolFactory(new TJSONProtocolFactory());
 
     TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
     //TThreadedServer server(processor, serverTransport, transportFactory, protocolFactory);
     std::cout << "Starting the server on port " << port << "..." << std::endl;
-
-    auto start = std::chrono::high_resolution_clock::now();
     server.serve();
-    auto end = std::chrono::high_resolution_clock::now();
-
-    auto total_rpc_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    auto business_logic_time = business_logic->getTotalBusinessLogicTime();
-    auto pure_rpc_time = total_rpc_time - business_logic_time;
-
-    auto total_time = total_rpc_time.count();
-    auto rpc_time = pure_rpc_time.count();
-    auto logic_time = business_logic_time.count();
-
-    std::cout << "Pure RPC time: " << rpc_time << "µs (" 
-              << std::fixed << std::setprecision(1) 
-              << (rpc_time * 100.0 / total_time) << "%)\n"
-              << "Business Logic time: " << logic_time << "µs ("
-              << (logic_time * 100.0 / total_time) << "%)\n";
-
-    // Cleanup DPDK
-    //dpdk.stopPolling();
-
     return 0;
 }

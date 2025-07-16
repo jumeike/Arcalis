@@ -54,7 +54,7 @@ AS_IF([test "x$with_dpdk" != xno],
 # Verify DPDK headers are available
 AS_IF([test "x$with_dpdk" != xno],
     [save_CPPFLAGS="$CPPFLAGS"
-     DPDK_ROOT="/home/chumeike/dpdk-24.07"
+     DPDK_ROOT="/users/jumeike/dpdk-25.03"
      CPPFLAGS="$CPPFLAGS $DPDK_CFLAGS \ 
             -I$DPDK_ROOT/drivers/net/mlx5 \
             -I$DPDK_ROOT/drivers/common/mlx5 \

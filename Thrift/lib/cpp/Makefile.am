@@ -35,7 +35,7 @@ pkgconfigdir = $(libdir)/pkgconfig
 
 lib_LTLIBRARIES = libthrift.la
 pkgconfig_DATA = thrift.pc
-libthrift_la_LDFLAGS = -release $(VERSION) -L/usr/local/lib/x86_64-linux-gnu/dpdk/pmds-24.2 #--static --libs -pthread
+libthrift_la_LDFLAGS = -release $(VERSION) -L/usr/local/lib/x86_64-linux-gnu/dpdk/pmds-25.1 #--static --libs -pthread
                         
 
 #if WITH_DPDK

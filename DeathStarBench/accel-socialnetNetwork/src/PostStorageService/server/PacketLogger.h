@@ -24,15 +24,15 @@ public:
         std::string ext = binary_mode ? ".bin" : ".csv";
         auto flags = binary_mode ? (std::ios::out | std::ios::binary) : std::ios::out;
         
-        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc" + ext, flags);
-        rpc_to_app_.open(dirName + "/rpc_to_app" + ext, flags);
-        app_to_rpc_.open(dirName + "/app_to_rpc" + ext, flags);
-        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk" + ext, flags);
+        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc_1k" + ext, flags);
+        rpc_to_app_.open(dirName + "/rpc_to_app_1k" + ext, flags);
+        app_to_rpc_.open(dirName + "/app_to_rpc_1k" + ext, flags);
+        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk_1k" + ext, flags);
 
-        dpdk_to_rpc.open(dirName + "/dpdk_to_rpc" + ".csv", std::ios::out);
-        rpc_to_app.open(dirName + "/rpc_to_app" + ".csv", std::ios::out);
-        app_to_rpc.open(dirName + "/app_to_rpc" + ".csv", std::ios::out);
-        rpc_to_dpdk.open(dirName + "/rpc_to_dpdk" + ".csv", std::ios::out);
+        dpdk_to_rpc.open(dirName + "/dpdk_to_rpc_1k" + ".csv", std::ios::out);
+        rpc_to_app.open(dirName + "/rpc_to_app_1k" + ".csv", std::ios::out);
+        app_to_rpc.open(dirName + "/app_to_rpc_1k" + ".csv", std::ios::out);
+        rpc_to_dpdk.open(dirName + "/rpc_to_dpdk_1k" + ".csv", std::ios::out);
         
         // if (!binary_mode) {
             writeCSVHeaders();

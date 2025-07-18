@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
 #endif //ENABLE_GEM5
 
 #ifdef ENABLE_TRACING
-  PacketLogger::getInstance().initializeLogFiles("poststorage_traces", false);
+  PacketLogger::getInstance().initializeLogFiles("poststorage_traces", true);
 #endif
 
   json config_json;
@@ -185,8 +185,8 @@ int main(int argc, char* argv[]) {
 #ifdef ENABLE_GEM5
   TSimpleServer server(
 #else
-  TSimpleServer server(
-  //TThreadedServer server(
+  // TSimpleServer server(
+  TThreadedServer server(
 #endif // ENABLE_GEM5
       std::make_shared<PostStorageServiceProcessor>(handler),
       server_socket,

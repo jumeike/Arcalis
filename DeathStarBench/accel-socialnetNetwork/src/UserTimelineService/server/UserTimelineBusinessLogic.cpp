@@ -375,7 +375,7 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
     std::vector<Post> _return_posts;
     auto post_client = post_client_wrapper->GetClient();
     try {
-      LOG(info) << "About to read posts from post-storage-service";
+      LOG(debug) << "About to read posts from post-storage-service";
       post_client->ReadPosts(_return_posts, req_id, post_ids, carrier);
     } catch (...) {
       _post_client_pool->Remove(post_client_wrapper);
@@ -394,7 +394,25 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
     LOG(error) << "Failed to get posts from post-storage-service";
     throw;
   }
-  
+
+    // Test without async first
+    // auto post_client_wrapper = _post_client_pool->Pop();
+    // if (!post_client_wrapper) {
+    //   ServiceException se;
+    //   se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
+    //   se.message = "Failed to connect to post-storage-service";
+    //   throw se;
+    // }
+
+    // std::vector<Post> _return_posts;
+    // auto post_client = post_client_wrapper->GetClient();
+    // LOG(info) << "About to read posts from post-storage-service";
+    // post_client->ReadPosts(_return_posts, req_id, post_ids, carrier);  // This will block here if service is down
+    // LOG(info) << "Successfully read posts from post-storage-service";
+    
+    // std::vector<Post> posts = _return_posts;
+    // _post_service_calls++;
+
   auto post_service_end = std::chrono::high_resolution_clock::now();
   _post_service_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       post_service_end - post_service_start).count();

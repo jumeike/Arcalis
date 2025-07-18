@@ -1,3 +1,4 @@
 # Ignore original .git directories from cloned repos
 Thrift/.git/
 DeathStarBench/.git/
+*.csv

@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
 
   // Create server
   std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
-  TThreadedServer server(
+  TTThreadedServer server(
   //TSimpleServer server(
       std::make_shared<PostStorageServiceProcessor>(handler),
       server_socket,

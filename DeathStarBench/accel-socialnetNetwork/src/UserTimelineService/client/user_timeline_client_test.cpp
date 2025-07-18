@@ -57,62 +57,124 @@ struct TestMetrics {
     }
 };
 
-// Helper function to create a sample post
+TestMetrics global_metrics;
+// Helper function to create a sample post with fixed-length strings
 Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     Post post;
     post.post_id = post_id;
     post.req_id = req_id;
     post.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    post.text = "Sample timeline post from thread " + std::to_string(thread_id) + 
-                " with post_id " + std::to_string(post_id);
-    post.post_type = PostType::POST;
-    
-    // Creator
+ 
+    // Fixed-length text (64 chars)
+    char text_buf[65];
+    snprintf(text_buf, sizeof(text_buf), "Sample post text from thread %03d with post_id %010ld      ",
+             (int)(thread_id % 1000), post_id);
+    std::string text_str(text_buf);
+    text_str.resize(64, ' ');
+    post.text = text_str;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> post_type_dist(0, 3);
+    post.post_type = static_cast<PostType::type>(post_type_dist(gen)); //PostType::POST;
+ 
+    // Creator with fixed-length username (16 chars)
     post.creator.user_id = thread_id + 1000;
-    post.creator.username = "user_" + std::to_string(thread_id);
+    char username_buf[17];
+    snprintf(username_buf, sizeof(username_buf), "user_%011d", (int)(thread_id % 100000000000LL));
+    std::string username_str(username_buf);
+    username_str.resize(16, ' ');
+    post.creator.username = username_str;
+ 
+    // Sample URLs with fixed lengths
+    Url url;
+    char short_buf[33], expanded_buf[65];
+    snprintf(short_buf, sizeof(short_buf), "http://short.ly/%010" PRId64, (int64_t)(post_id % 10000000000LL));
+    snprintf(expanded_buf, sizeof(expanded_buf), "http://example.com/full_url/%020" PRId64, (int64_t)(post_id % 100000000000000LL));
     
-    // Sample URLs
-    if (post_id % 3 == 0) {
-        Url url;
-        url.shortened_url = "http://short.ly/" + std::to_string(post_id);
-        url.expanded_url = "http://example.com/full_url/" + std::to_string(post_id);
-        post.urls.push_back(url);
-    }
+    std::string short_str(short_buf);
+    std::string expanded_str(expanded_buf);
+    short_str.resize(32, ' ');
+    expanded_str.resize(64, ' ');
     
-    // Sample user mentions
-    if (post_id % 4 == 0) {
-        UserMention mention;
-        mention.user_id = (thread_id + 1) * 1000;
-        mention.username = "mentioned_user_" + std::to_string(thread_id + 1);
-        post.user_mentions.push_back(mention);
-    }
-    
-    // Sample media
-    if (post_id % 5 == 0) {
-        Media media;
-        media.media_id = post_id * 10;
-        media.media_type = "image";
-        post.media.push_back(media);
-    }
-    
+    url.shortened_url = short_str;
+    url.expanded_url = expanded_str;
+    post.urls.push_back(url);
+ 
+    // Sample user mentions with fixed-length username (16 chars)
+    UserMention mention;
+    mention.user_id = (thread_id + 1) * 1000;
+    char mention_buf[17];
+    snprintf(mention_buf, sizeof(mention_buf), "mentioned_%05d", (int)((thread_id + 1) % 100000));
+    std::string mention_str(mention_buf);
+    mention_str.resize(16, ' ');
+    mention.username = mention_str;
+    post.user_mentions.push_back(mention);
+ 
+    // Sample media with fixed-length type (8 chars)
+    Media media;
+    media.media_id = (post_id * 10) & 0x7FFFFFFFFFFFFFFF;
+    const char* media_types[] = {
+        "image   ",  // 8 chars
+        "video   ",  // 8 chars
+        "audio   ",  // 8 chars
+        "document",  // 8 chars
+        "gif     "   // 8 chars
+    };
+    media.media_type = media_types[post_id % 5];
+    post.media.push_back(media);
+ 
     return post;
+ }
+
+// Variables for generating unique post_ids
+static std::mutex id_generation_mutex;
+static int64_t current_timestamp = -1;
+static int counter = 0;
+
+// Helper function to generate unique ID (similar to UniqueID service)
+uint64_t generateUniquePostId(int thread_id) {
+    std::lock_guard<std::mutex> lock(id_generation_mutex);
+    
+    // Get current timestamp in milliseconds
+    int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    
+    // Handle counter logic like UniqueID service
+    if (current_timestamp > timestamp) {
+        // Time went backwards - this shouldn't happen normally
+        timestamp = current_timestamp;
+    }
+    
+    if (current_timestamp == timestamp) {
+        counter++;
+    } else {
+        current_timestamp = timestamp;
+        counter = 0;
+    }
+    
+    // Combine timestamp, thread_id, and counter for uniqueness
+    // Format: timestamp (40 bits) + thread_id (8 bits) + counter (16 bits)
+    int64_t unique_id = (timestamp << 24) | ((thread_id & 0xFF) << 16) | (counter & 0xFFFF);
+    
+    return unique_id & 0x7FFFFFFFFFFFFFFF;
 }
 
-TestMetrics global_metrics;
 
 void client_thread(int thread_id, const std::string& server_host, int server_port, 
                    int operations_per_thread, int warmup_operations, bool verbose) {
     try {
         // Connect to UserTimeline service
         std::shared_ptr<TTransport> timeline_socket(new TSocket(server_host, server_port));
-        std::shared_ptr<TTransport> timeline_transport(new TFramedTransport(timeline_socket));
+        //std::shared_ptr<TTransport> timeline_transport(new TFramedTransport(timeline_socket));
+        std::shared_ptr<TTransport> timeline_transport(new TBufferedTransport(timeline_socket, 2048));
         std::shared_ptr<TProtocol> timeline_protocol(new TBinaryProtocol(timeline_transport));
         UserTimelineServiceClient timeline_client(timeline_protocol);
         
         // Connect to PostStorage service (assuming port 9091)
         std::shared_ptr<TTransport> post_socket(new TSocket(server_host, 9091));
-        std::shared_ptr<TTransport> post_transport(new TFramedTransport(post_socket));
+        //std::shared_ptr<TTransport> post_transport(new TFramedTransport(post_socket));
+        std::shared_ptr<TTransport> post_transport(new TBufferedTransport(post_socket, 2048));
         std::shared_ptr<TProtocol> post_protocol(new TBinaryProtocol(post_transport));
         PostStorageServiceClient post_client(post_protocol);
         
@@ -139,7 +201,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             
             try {
                 int64_t user_id = user_dist(gen);
-                int64_t post_id = thread_id * 100000 + i;
+                uint64_t post_id = generateUniquePostId(thread_id);
                 int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 
@@ -167,9 +229,12 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             global_metrics.total_requests++;
             
             std::map<std::string, std::string> carrier;
-            carrier["trace-id"] = "test-" + std::to_string(thread_id) + "-" + std::to_string(i);
-            carrier["span-id"] = std::to_string(thread_id * 10000 + i);
-            
+            //carrier["trace-id"] = "test-" + std::to_string(thread_id) + "-" + std::to_string(i);
+            //carrier["span-id"] = std::to_string(thread_id * 10000 + i);
+
+            carrier["trace-id"] = "test-0000-0000";  // Fixed 14-char string
+            carrier["span-id"] = "00";               // Fixed 2-char string
+
             int operation = operation_dist(gen);
             auto start_time = std::chrono::high_resolution_clock::now();
             
@@ -177,7 +242,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                 if (operation == 0 || written_posts.empty()) {
                     // Write timeline operation (create post first)
                     int64_t user_id = user_dist(gen);
-                    int64_t post_id = thread_id * 100000 + warmup_operations + i;
+                    uint64_t post_id = generateUniquePostId(thread_id);
                     int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     

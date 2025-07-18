@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TThreadedServer.h>
+#include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TServerSocket.h>
 
@@ -19,14 +20,16 @@
 
 using apache::thrift::protocol::TBinaryProtocolFactory;
 using apache::thrift::server::TThreadedServer;
+using apache::thrift::server::TSimpleServer;
 using apache::thrift::transport::TFramedTransportFactory;
+using apache::thrift::transport::TBufferedTransportFactory;
 using apache::thrift::transport::TServerSocket;
 using namespace social_network;
 
 void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
 
 int main(int argc, char *argv[]) {
-#ifdef debug_logging
+#ifdef DEBUG_LOGGING
   std::cout << "DEBUG_LOGGING is defined!" << std::endl;
 #else
   std::cout << "DEBUG_LOGGING is not defined!" << std::endl;
@@ -111,6 +114,48 @@ int main(int argc, char *argv[]) {
   }
   mongoc_client_pool_push(mongodb_client_pool, mongodb_client);
 
+  LOG(info) << "MongoDB index created successfully";
+
+  // After creating MongoDB index, add cleanup
+  mongoc_client_t* cleanup_client = mongoc_client_pool_pop(mongodb_client_pool);
+  if (cleanup_client) {
+    auto collection = mongoc_client_get_collection(cleanup_client, "user-timeline", "user-timeline");  // ← fixed
+    if (collection) {
+      bson_t* empty_filter = bson_new();
+      bson_error_t error;
+      bson_t reply;
+      bson_init(&reply);
+
+      bool deleted = mongoc_collection_delete_many(collection, empty_filter, nullptr, &reply, &error);
+
+      if (deleted) {
+        char* reply_str = bson_as_canonical_extended_json(&reply, nullptr);
+        // LOG(info) << "[UserTimeline Cleanup] MongoDB deletion reply: " << reply_str;
+        LOG(info) << "Cleared existing posts from MongoDB";
+        bson_free(reply_str);
+      } else {
+        LOG(error) << "[UserTimeline Cleanup] MongoDB deletion failed: " << error.message;
+      }
+
+      bson_destroy(&reply);
+      bson_destroy(empty_filter);
+      mongoc_collection_destroy(collection);
+    }
+    mongoc_client_pool_push(mongodb_client_pool, cleanup_client);
+  }
+
+
+  if (!redis_cluster_flag && !redis_replica_config_flag) {
+    Redis redis_cleanup_client = init_redis_client_pool(config_json, "user-timeline");
+  
+    try {
+      redis_cleanup_client.flushdb();  // This is the correct API
+      LOG(info) << "Cleared Redis database";
+    } catch (const sw::redis::Error &err) {
+      LOG(error) << "Failed to flush Redis DB: " << err.what();
+    }
+  }
+
   std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
 
   // Create handler and business logic based on Redis configuration
@@ -124,9 +169,11 @@ int main(int argc, char *argv[]) {
     handler->setBusinessLogic(business_logic.get());
 
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
-                           std::make_shared<TFramedTransportFactory>(),
-                           std::make_shared<TBinaryProtocolFactory>());
+                          //  std::make_shared<TFramedTransportFactory>(),
+                          std::make_shared<TBufferedTransportFactory>(), 
+                          std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the user-timeline-service server with Redis Cluster support...";
     server.serve();
   }
@@ -138,8 +185,10 @@ int main(int argc, char *argv[]) {
     handler->setBusinessLogic(business_logic.get());
 
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
-                           std::make_shared<TFramedTransportFactory>(),
+                          //  std::make_shared<TFramedTransportFactory>(),
+                           std::make_shared<TBufferedTransportFactory>(),
                            std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the user-timeline-service server with replicated Redis support...";
     server.serve();
@@ -151,10 +200,12 @@ int main(int argc, char *argv[]) {
     handler->setBusinessLogic(business_logic.get());
 
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
-                           std::make_shared<TFramedTransportFactory>(),
+                          //  std::make_shared<TFramedTransportFactory>(),
+                          std::make_shared<TBufferedTransportFactory>(),
                            std::make_shared<TBinaryProtocolFactory>());
-    LOG(info) << "Starting the user-timeline-service server...";
+    LOG(info) << "Starting the user-timeline-service server on port " << port <<"...";
     server.serve();
   }
 

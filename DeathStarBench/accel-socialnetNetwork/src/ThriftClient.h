@@ -22,6 +22,7 @@ namespace social_network {
 using apache::thrift::protocol::TProtocol;
 using apache::thrift::protocol::TBinaryProtocol;
 using apache::thrift::transport::TFramedTransport;
+using apache::thrift::transport::TBufferedTransport;
 using apache::thrift::transport::TSocket;
 using apache::thrift::transport::TSSLSocketFactory;
 using apache::thrift::transport::TTransport;
@@ -62,7 +63,8 @@ ThriftClient<TThriftClient>::ThriftClient(
   _port = port;
   _socket = std::shared_ptr<TSocket>(new TSocket(addr, port));
   _socket->setKeepAlive(true);
-  _transport = std::shared_ptr<TTransport>(new TFramedTransport(_socket));
+  //_transport = std::shared_ptr<TTransport>(new TFramedTransport(_socket));
+  _transport = std::shared_ptr<TTransport>(new TBufferedTransport(_socket, 2048));
   _protocol = std::shared_ptr<TProtocol>(new TBinaryProtocol(_transport));
   _client = new TThriftClient(_protocol);
   _connect_timestamp = 0;
@@ -98,7 +100,8 @@ ThriftClient<TThriftClient>::ThriftClient(
     _socket = std::shared_ptr<TSocket>(new TSocket(addr, port));
   }
   _socket->setKeepAlive(true);
-  _transport = std::shared_ptr<TTransport>(new TFramedTransport(_socket));
+  //_transport = std::shared_ptr<TTransport>(new TFramedTransport(_socket));
+  _transport = std::shared_ptr<TTransport>(new TBufferedTransport(_socket, 2048));
   _protocol = std::shared_ptr<TProtocol>(new TBinaryProtocol(_transport));
   _client = new TThriftClient(_protocol);
   _connect_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(

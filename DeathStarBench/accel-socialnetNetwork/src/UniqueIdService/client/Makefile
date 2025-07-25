@@ -2,8 +2,8 @@
 
 CXX = g++
 CXXFLAGS = -std=c++14 -Wall -Wextra -O2 -pthread
-INCLUDES = -I. -I../include
-LIBS = -lthrift -lpthread
+INCLUDES = -I. -I../include -I/usr/local/include
+LIBS = -lthrift -lpthread -L/usr/local/lib
 
 # Thrift generated files (assuming they're in ../gen-cpp)
 THRIFT_GEN = ../../../gen-cpp/UniqueIdService.cpp \

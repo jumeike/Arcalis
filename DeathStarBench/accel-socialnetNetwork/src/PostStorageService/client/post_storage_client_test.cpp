@@ -12,6 +12,7 @@
 
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TSocket.h>
+#include <thrift/transport/TUDPSocket.h>
 #include <thrift/transport/TTransportUtils.h>
 #include <thrift/transport/TBufferTransports.h>
 
@@ -165,9 +166,9 @@ uint64_t generateUniquePostId(int thread_id) {
 void client_thread(int thread_id, const std::string& server_host, int server_port, 
                    int operations_per_thread, int warmup_operations, bool verbose) {
     try {
-        std::shared_ptr<TTransport> socket(new TSocket(server_host, server_port));
+        std::shared_ptr<TTransport> socket(new TUDPSocket(server_host, server_port));
         //std::shared_ptr<TTransport> transport(new TFramedTransport(socket));
-        std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+        std::shared_ptr<TTransport> transport(new TBufferedTransport(socket, 2048));
         std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
         PostStorageServiceClient client(protocol);
         

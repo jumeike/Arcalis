@@ -39,3 +39,32 @@ meson setup build
 cd build
 ninja
 sudo ninja install
+
+echo 2048 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+sudo apt update
+sudo apt install build-essential cmake pkg-config \
+  libboost-all-dev nlohmann-json3-dev libthrift-dev \
+  libmemcached-dev libmongoc-dev libbson-dev \
+  libssl-dev libhiredis-dev
+
+
+sudo sh -c 'echo 0 > /proc/sys/kernel/perf_event_paranoid'
+sudo sh -c 'echo 0 > /proc/sys/kernel/kptr_restrict'
+sudo sh -c 'echo 0 > /proc/sys/kernel/yama/ptrace_scope'
+
+# Install redis++
+git clone https://github.com/sewenew/redis-plus-plus.git
+cd redis-plus-plus
+mkdir build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+
+# Install hiredis
+git clone https://github.com/redis/hiredis.git
+cd hiredis
+make USE_SSL=1
+sudo make install
+

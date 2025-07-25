@@ -37,7 +37,7 @@ if $ENABLE_TRACING; then
   CXXFLAGS+=" -DENABLE_TRACING"
 fi
 if $DEBUG; then
-  CXXFLAGS+=" -g -O0"
+  CXXFLAGS+=" -g -O0 -mssse3"
 fi
 
 # Run configure and build

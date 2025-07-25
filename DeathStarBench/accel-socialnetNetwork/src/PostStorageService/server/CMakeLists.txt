@@ -39,6 +39,8 @@ target_include_directories(
     .
 )
 
+target_link_directories(PostStorageService PRIVATE /usr/local/lib)
+
 target_link_libraries(
     PostStorageService
     ${LIBMEMCACHED_LIBRARIES}

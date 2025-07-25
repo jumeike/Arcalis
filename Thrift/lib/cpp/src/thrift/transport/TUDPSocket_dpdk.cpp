@@ -16,7 +16,10 @@ static const size_t IP_HDR_LEN = sizeof(struct rte_ipv4_hdr);
 static const size_t UDP_HDR_LEN = sizeof(struct rte_udp_hdr);
 static const size_t HEADERS_LEN = ETHER_HDR_LEN + IP_HDR_LEN + UDP_HDR_LEN;
 
-
+// Constants
+#define MIN_ETHERNET_FRAME_SIZE 64
+#define ETHERNET_CRC_SIZE 4
+#define MIN_PAYLOAD_SIZE (MIN_ETHERNET_FRAME_SIZE - sizeof(struct rte_ether_hdr) - ETHERNET_CRC_SIZE)
 
 TUDPSocket::TUDPSocket(std::shared_ptr<TConfiguration> config)
   : TVirtualTransport(config)
@@ -243,180 +246,268 @@ void TUDPSocket::handleArpPacket(struct rte_mbuf* m) {
     }
 }
 
+// Server read (same as client)
 uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
     if (!dpdkResources_ || !dpdkResources_->isInitialized) {
-        throw TTransportException(TTransportException::NOT_OPEN, 
-                                "Called read on non-open socket");
+        throw TTransportException(TTransportException::NOT_OPEN, "Socket not open");
     }
 
-    uint32_t total_rx = 0;
-    struct rte_mbuf* pkt = nullptr;
-    
-    //printf("Called read()\n"); 
-    
-    // Poll for packets with timeout handling
+    struct rte_mbuf* pkts[32];
     uint64_t start_time = rte_get_timer_cycles();
     uint64_t timeout_cycles = (uint64_t)recvTimeout_ * rte_get_timer_hz() / 1000;
 
-    while (total_rx == 0) {
-        // Check for timeout
+    while (true) {
         if (recvTimeout_ > 0) {
             uint64_t elapsed = rte_get_timer_cycles() - start_time;
             if (elapsed > timeout_cycles) {
-                throw TTransportException(TTransportException::TIMED_OUT,
-                                        "UDP read timeout");
+                throw TTransportException(TTransportException::TIMED_OUT, "Read timeout");
             }
         }
 
-        // Use optimized single packet receive
-        uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, &pkt, 1);
+        uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, pkts, 32);
         if (nb_rx == 0) continue;
-        //if (nb_rx > 0 ) printf("nb_rx: %d\n", nb_rx);
-        // Get packet headers
-        struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
-        uint16_t ether_type = rte_be_to_cpu_16(eth_hdr->ether_type);
 
-        // Handle ARP packets
-        if (ether_type == RTE_ETHER_TYPE_ARP) {
-            //fprintf(stderr, "Debug: Received ARP request\n");
-            handleArpPacket(pkt);
+        for (uint16_t i = 0; i < nb_rx; i++) {
+            struct rte_mbuf* pkt = pkts[i];
+            struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
+            uint16_t ether_type = rte_be_to_cpu_16(eth_hdr->ether_type);
+
+            if (ether_type == 0x88B5) {
+                uint8_t* payload = (uint8_t*)(eth_hdr + 1);
+                uint32_t actual_len = rte_be_to_cpu_32(*(uint32_t*)payload);
+                uint32_t copy_len = std::min(actual_len, len);
+                rte_memcpy(buf, payload + 4, copy_len);
+
+                // Cache peer MAC for responses
+                rte_memcpy(&peer_mac_, &eth_hdr->src_addr, sizeof(struct rte_ether_addr));
+
+                // Free all packets
+                for (uint16_t j = 0; j < nb_rx; j++) {
+                    rte_pktmbuf_free(pkts[j]);
+                }
+                return copy_len;
+            }
             rte_pktmbuf_free(pkt);
-            continue;
         }
-
-        // Skip non-IPv4 packets
-        if (ether_type != RTE_ETHER_TYPE_IPV4) {
-            fprintf(stderr, "Debug: found non-IPv4 packets\n");
-            rte_pktmbuf_free(pkt);
-            continue;
-        }
-
-        //struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
-        struct rte_ipv4_hdr* ip_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*,
-                                                             sizeof(struct rte_ether_hdr));
-        struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
-
-        // Skip non-UDP packets
-        if (ip_hdr->next_proto_id != IPPROTO_UDP) {
-            fprintf(stderr, "Debug: found non-UDP packet\n");
-            rte_pktmbuf_free(pkt);
-            continue;
-        }
-
-        // Validate port if set
-        if (port_ != 0 && rte_be_to_cpu_16(udp_hdr->dst_port) != port_) {
-            rte_pktmbuf_free(pkt);
-            continue;
-        }
-
-        // Get and copy payload
-        uint8_t* payload = rte_pktmbuf_mtod_offset(pkt, uint8_t*, HEADERS_LEN);
-        if (!payload) {
-            printf("Error: Invalid payload\n");  // Debug`
-            rte_pktmbuf_free(pkt);
-            continue;
-        }
-        uint32_t payload_len = static_cast<uint32_t>(pkt->data_len - HEADERS_LEN);
-        uint32_t copy_len = std::min(payload_len, len); 
-        rte_memcpy(buf, payload, copy_len);
-        total_rx = copy_len;
-
-        // Cache peer address
-        peerAddr_.sin_family = AF_INET;
-        peerAddr_.sin_port = udp_hdr->src_port;
-        peerAddr_.sin_addr.s_addr = ip_hdr->src_addr;
-        
-        rte_pktmbuf_free(pkt);
-        break;
     }
-    return total_rx;
 }
+
+//uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
+//    if (!dpdkResources_ || !dpdkResources_->isInitialized) {
+//        throw TTransportException(TTransportException::NOT_OPEN, 
+//                                "Called read on non-open socket");
+//    }
+//
+//    uint32_t total_rx = 0;
+//    struct rte_mbuf* pkt = nullptr;
+//    
+//    //printf("Called read()\n"); 
+//    
+//    // Poll for packets with timeout handling
+//    uint64_t start_time = rte_get_timer_cycles();
+//    uint64_t timeout_cycles = (uint64_t)recvTimeout_ * rte_get_timer_hz() / 1000;
+//
+//    while (total_rx == 0) {
+//        // Check for timeout
+//        if (recvTimeout_ > 0) {
+//            uint64_t elapsed = rte_get_timer_cycles() - start_time;
+//            if (elapsed > timeout_cycles) {
+//                throw TTransportException(TTransportException::TIMED_OUT,
+//                                        "UDP read timeout");
+//            }
+//        }
+//
+//        // Use optimized single packet receive
+//        uint16_t nb_rx = rte_eth_rx_burst(dpdkResources_->portId, 0, &pkt, 1);
+//        if (nb_rx == 0) continue;
+//        //if (nb_rx > 0 ) printf("nb_rx: %d\n", nb_rx);
+//        // Get packet headers
+//        struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
+//        uint16_t ether_type = rte_be_to_cpu_16(eth_hdr->ether_type);
+//
+//        // Handle ARP packets
+//        if (ether_type == RTE_ETHER_TYPE_ARP) {
+//            //fprintf(stderr, "Debug: Received ARP request\n");
+//            handleArpPacket(pkt);
+//            rte_pktmbuf_free(pkt);
+//            continue;
+//        }
+//
+//        // Skip non-IPv4 packets
+//        if (ether_type != RTE_ETHER_TYPE_IPV4) {
+//            fprintf(stderr, "Debug: found non-IPv4 packets\n");
+//            rte_pktmbuf_free(pkt);
+//            continue;
+//        }
+//
+//        //struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
+//        struct rte_ipv4_hdr* ip_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*,
+//                                                             sizeof(struct rte_ether_hdr));
+//        struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
+//
+//        // Skip non-UDP packets
+//        if (ip_hdr->next_proto_id != IPPROTO_UDP) {
+//            fprintf(stderr, "Debug: found non-UDP packet\n");
+//            rte_pktmbuf_free(pkt);
+//            continue;
+//        }
+//
+//        // Validate port if set
+//        if (port_ != 0 && rte_be_to_cpu_16(udp_hdr->dst_port) != port_) {
+//            rte_pktmbuf_free(pkt);
+//            continue;
+//        }
+//
+//        // Get and copy payload
+//        uint8_t* payload = rte_pktmbuf_mtod_offset(pkt, uint8_t*, HEADERS_LEN);
+//        if (!payload) {
+//            printf("Error: Invalid payload\n");  // Debug`
+//            rte_pktmbuf_free(pkt);
+//            continue;
+//        }
+//        uint32_t payload_len = static_cast<uint32_t>(pkt->data_len - HEADERS_LEN);
+//        uint32_t copy_len = std::min(payload_len, len); 
+//        rte_memcpy(buf, payload, copy_len);
+//        total_rx = copy_len;
+//
+//        // Cache peer address
+//        peerAddr_.sin_family = AF_INET;
+//        peerAddr_.sin_port = udp_hdr->src_port;
+//        peerAddr_.sin_addr.s_addr = ip_hdr->src_addr;
+//        
+//        rte_pktmbuf_free(pkt);
+//        break;
+//    }
+//    return total_rx;
+//}
 
 void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
   write_partial(buf, len);
 }
 
+// Server write (same as client)
 uint32_t TUDPSocket::write_partial(const uint8_t* buf, uint32_t len) {
-  if (!dpdkResources_ || !dpdkResources_->isInitialized) {
-    throw TTransportException(TTransportException::NOT_OPEN,
-                             "Called write on non-open socket");
-  }
+    if (!dpdkResources_ || !dpdkResources_->isInitialized) {
+        throw TTransportException(TTransportException::NOT_OPEN, "Socket not open");
+    }
 
-  // Allocate new mbuf
-  struct rte_mbuf* m = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
-  if (!m) {
-      throw TTransportException(TTransportException::UNKNOWN,
-                              "Failed to allocate mbuf");
-  }
+    struct rte_mbuf* m = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
+    if (!m) {
+        throw TTransportException(TTransportException::UNKNOWN, "Failed to allocate mbuf");
+    }
 
-  // Reserve space for headers
-  char* pkt = rte_pktmbuf_append(m, HEADERS_LEN + len);
-  if (!pkt) {
-    rte_pktmbuf_free(m);
-    throw TTransportException(TTransportException::UNKNOWN,
-                             "Failed to reserve space in mbuf");
-  }
+    // Calculate padded payload size
+    uint32_t padded_payload_size = std::max(len + 4, (uint32_t) MIN_PAYLOAD_SIZE);
+    uint32_t total_size = sizeof(struct rte_ether_hdr) + padded_payload_size;
+    
+    char* pkt = rte_pktmbuf_append(m, total_size);
+    if (!pkt) {
+        rte_pktmbuf_free(m);
+        throw TTransportException(TTransportException::UNKNOWN, "Failed to append data");
+    }
 
-  // Set up headers
-  struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
-  struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
-  struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
-  uint8_t* payload = (uint8_t*)(udp_hdr + 1);
+    // Setup headers
+    struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
+    rte_eth_macaddr_get(dpdkResources_->portId, &eth_hdr->src_addr);
+    rte_memcpy(&eth_hdr->dst_addr, &peer_mac_, sizeof(struct rte_ether_addr));
+    eth_hdr->ether_type = rte_cpu_to_be_16(0x88B5);
 
-  // Ethernet header
-  rte_eth_macaddr_get(dpdkResources_->portId, &eth_hdr->src_addr);
-  // Destination MAC should be set based on ARP or known destination
-  // For now using broadcast
-  // memset(&eth_hdr->dst_addr, 0xff, RTE_ETHER_ADDR_LEN); 
-  // Set destination MAC directly
-  // Converting 0c:42:a1:cc:83:82 to bytes
-  eth_hdr->dst_addr.addr_bytes[0] = 0x0c;
-  eth_hdr->dst_addr.addr_bytes[1] = 0x42;
-  eth_hdr->dst_addr.addr_bytes[2] = 0xa1;
-  eth_hdr->dst_addr.addr_bytes[3] = 0xcc;
-  eth_hdr->dst_addr.addr_bytes[4] = 0x83;
-  eth_hdr->dst_addr.addr_bytes[5] = 0x82;
+    // Payload: [length][data][padding]
+    uint8_t* payload = (uint8_t*)(eth_hdr + 1);
+    *(uint32_t*)payload = rte_cpu_to_be_32(len);
+    rte_memcpy(payload + 4, buf, len);
+    memset(payload + 4 + len, 0, padded_payload_size - 4 - len);
 
-  eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+    uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId, 0, &m, 1);
+    if (nb_tx == 0) {
+        rte_pktmbuf_free(m);
+        throw TTransportException(TTransportException::UNKNOWN, "Failed to send");
+    }
 
-  // IP header
-  memset(ip_hdr, 0, sizeof(*ip_hdr));
-  ip_hdr->version_ihl = (4 << 4) | (sizeof(*ip_hdr) >> 2);
-  ip_hdr->type_of_service = 0;
-  ip_hdr->total_length = rte_cpu_to_be_16(sizeof(*ip_hdr) + sizeof(*udp_hdr) + len);
-  ip_hdr->packet_id = 0;
-  ip_hdr->fragment_offset = 0;
-  ip_hdr->time_to_live = 64;
-  ip_hdr->next_proto_id = IPPROTO_UDP;
-  // Source IP should be interface IP
-  ip_hdr->src_addr = localIpAddress_; //use configured Ip
-  // Destination IP from peer address
-  ip_hdr->dst_addr = peerAddr_.sin_addr.s_addr;
-  ip_hdr->hdr_checksum = 0;
-  ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
-
-  // UDP header
-  udp_hdr->src_port = rte_cpu_to_be_16(port_);
-  udp_hdr->dst_port = peerAddr_.sin_port;
-  udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(*udp_hdr) + len);
-  udp_hdr->dgram_cksum = 0;
-
-  // Copy payload
-  rte_memcpy(payload, buf, len);
-
-  // Calculate UDP checksum
-  udp_hdr->dgram_cksum = rte_ipv4_udptcp_cksum(ip_hdr, udp_hdr);
-
-  // Send packet
-  uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId, 0, &m, 1);
-  if (nb_tx == 0) {
-    rte_pktmbuf_free(m);
-    throw TTransportException(TTransportException::UNKNOWN,
-                             "Failed to send packet");
-  }
-
-  return len;
+    return len;
 }
+
+//uint32_t TUDPSocket::write_partial(const uint8_t* buf, uint32_t len) {
+//  if (!dpdkResources_ || !dpdkResources_->isInitialized) {
+//    throw TTransportException(TTransportException::NOT_OPEN,
+//                             "Called write on non-open socket");
+//  }
+//
+//  // Allocate new mbuf
+//  struct rte_mbuf* m = rte_pktmbuf_alloc(dpdkResources_->mbufPool);
+//  if (!m) {
+//      throw TTransportException(TTransportException::UNKNOWN,
+//                              "Failed to allocate mbuf");
+//  }
+//
+//  // Reserve space for headers
+//  char* pkt = rte_pktmbuf_append(m, HEADERS_LEN + len);
+//  if (!pkt) {
+//    rte_pktmbuf_free(m);
+//    throw TTransportException(TTransportException::UNKNOWN,
+//                             "Failed to reserve space in mbuf");
+//  }
+//
+//  // Set up headers
+//  struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
+//  struct rte_ipv4_hdr* ip_hdr = (struct rte_ipv4_hdr*)(eth_hdr + 1);
+//  struct rte_udp_hdr* udp_hdr = (struct rte_udp_hdr*)(ip_hdr + 1);
+//  uint8_t* payload = (uint8_t*)(udp_hdr + 1);
+//
+//  // Ethernet header
+//  rte_eth_macaddr_get(dpdkResources_->portId, &eth_hdr->src_addr);
+//  // Destination MAC should be set based on ARP or known destination
+//  // For now using broadcast
+//  // memset(&eth_hdr->dst_addr, 0xff, RTE_ETHER_ADDR_LEN); 
+//  // Set destination MAC directly
+//  // Converting 0c:42:a1:cc:83:82 to bytes
+//  eth_hdr->dst_addr.addr_bytes[0] = 0x0c;
+//  eth_hdr->dst_addr.addr_bytes[1] = 0x42;
+//  eth_hdr->dst_addr.addr_bytes[2] = 0xa1;
+//  eth_hdr->dst_addr.addr_bytes[3] = 0xcc;
+//  eth_hdr->dst_addr.addr_bytes[4] = 0x83;
+//  eth_hdr->dst_addr.addr_bytes[5] = 0x82;
+//
+//  eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+//
+//  // IP header
+//  memset(ip_hdr, 0, sizeof(*ip_hdr));
+//  ip_hdr->version_ihl = (4 << 4) | (sizeof(*ip_hdr) >> 2);
+//  ip_hdr->type_of_service = 0;
+//  ip_hdr->total_length = rte_cpu_to_be_16(sizeof(*ip_hdr) + sizeof(*udp_hdr) + len);
+//  ip_hdr->packet_id = 0;
+//  ip_hdr->fragment_offset = 0;
+//  ip_hdr->time_to_live = 64;
+//  ip_hdr->next_proto_id = IPPROTO_UDP;
+//  // Source IP should be interface IP
+//  ip_hdr->src_addr = localIpAddress_; //use configured Ip
+//  // Destination IP from peer address
+//  ip_hdr->dst_addr = peerAddr_.sin_addr.s_addr;
+//  ip_hdr->hdr_checksum = 0;
+//  ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
+//
+//  // UDP header
+//  udp_hdr->src_port = rte_cpu_to_be_16(port_);
+//  udp_hdr->dst_port = peerAddr_.sin_port;
+//  udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(*udp_hdr) + len);
+//  udp_hdr->dgram_cksum = 0;
+//
+//  // Copy payload
+//  rte_memcpy(payload, buf, len);
+//
+//  // Calculate UDP checksum
+//  udp_hdr->dgram_cksum = rte_ipv4_udptcp_cksum(ip_hdr, udp_hdr);
+//
+//  // Send packet
+//  uint16_t nb_tx = rte_eth_tx_burst(dpdkResources_->portId, 0, &m, 1);
+//  if (nb_tx == 0) {
+//    rte_pktmbuf_free(m);
+//    throw TTransportException(TTransportException::UNKNOWN,
+//                             "Failed to send packet");
+//  }
+//
+//  return len;
+//}
 
 // Helper function to get local IP address
 uint32_t TUDPSocket::GetLocalIPAddress(uint16_t port_id __attribute__((unused))) {

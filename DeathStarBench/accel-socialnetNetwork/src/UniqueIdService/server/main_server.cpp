@@ -16,6 +16,7 @@
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TServerSocket.h>
+#include <thrift/transport/TServerUDPSocket.h>
 
 #include "../../utils.h"
 #include "../../utils_thrift.h"
@@ -46,6 +47,7 @@ using apache::thrift::server::TSimpleServer;
 using apache::thrift::transport::TFramedTransportFactory;
 using apache::thrift::transport::TBufferedTransportFactory;
 using apache::thrift::transport::TServerSocket;
+using apache::thrift::transport::TServerUDPSocket;
 using namespace social_network;
 
 void sigintHandler(int sig) { 
@@ -62,6 +64,7 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, sigintHandler);
   init_logger();
 
+#ifdef ENABLE_GEM5  
     std::string trace_file = "traces/dpdk_to_rpc.bin";
     int num_requests = -1;  // -1 means read all
     
@@ -84,13 +87,12 @@ int main(int argc, char *argv[]) {
         LOG(info) << "Max requests: " << num_requests;
     }
 
-  //SetUpTracer("config/jaeger-config.yml", "unique-id-service");
-#ifdef ENABLE_GEM5  
-  PacketLogger::getInstance().initializeLogFiles("traces", false);
   apache::thrift::transport::TSocket::setTraceConfig(trace_file, num_requests);
-#else
-  PacketLogger::getInstance().initializeLogFiles("traces", true);
 #endif  
+  //SetUpTracer("config/jaeger-config.yml", "unique-id-service");
+#ifdef ENABLE_TRACING  
+  PacketLogger::getInstance().initializeLogFiles("traces", false);
+#endif
   json config_json;
   if (load_config_file("config/service-config.json", &config_json) != 0) {
     exit(EXIT_FAILURE);
@@ -124,11 +126,13 @@ int main(int argc, char *argv[]) {
 #endif // ENABLE_GEM5
 
   // Create server
-  std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
+  //std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
+  std::shared_ptr<TServerUDPSocket> server_socket = std::make_shared<TServerUDPSocket>(port); 
 #ifdef ENABLE_GEM5
   TSimpleServer server(
 #else
-  TThreadedServer server(
+  TSimpleServer server(
+  //TThreadedServer server(
 #endif // ENABLE_GEM5
       std::make_shared<UniqueIdServiceProcessor>(handler),
       server_socket,

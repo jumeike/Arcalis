@@ -31,9 +31,10 @@ bool TServerUDPSocket::initDPDK() {
     // Minimal EAL arguments
     const char* argv[] = {
         "thrift-server",           // Program name
-        "-l", "0-1",              // Use CPU cores 0-1
+        "-l", "1",              // Use CPU cores 0-1
         "-n", "4",                // Number of memory channels
         "--proc-type=auto",       // Process type
+        "-a", "0000:51:00.0",	    // Specify Interface
         "--log-level", "8",       // Debug log level
         NULL
     };
@@ -96,6 +97,11 @@ bool TServerUDPSocket::setupDPDKPort() {
   dpdkResources_->portConf.txmode.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | 
                                             RTE_ETH_TX_OFFLOAD_UDP_CKSUM; 
 
+  printf("Port %u driver: %s\n", dpdkResources_->portId, dpdkResources_->devInfo.driver_name);
+  printf("Port %u max RX queues: %u, max TX queues: %u\n",
+        dpdkResources_->portId, dpdkResources_->devInfo.max_rx_queues, dpdkResources_->devInfo.max_tx_queues);
+
+
   // Configure device
   int ret = rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
   if (ret != 0) {
@@ -129,6 +135,25 @@ bool TServerUDPSocket::setupDPDKPort() {
   if (ret < 0) {
     return false;
   }
+
+  // Verify actual ring sizes after setup
+  struct rte_eth_rxq_info rxinfo;
+  struct rte_eth_txq_info txinfo;
+
+  rte_eth_rx_queue_info_get(dpdkResources_->portId, 0, &rxinfo);
+  rte_eth_tx_queue_info_get(dpdkResources_->portId, 0, &txinfo);
+
+  printf("Actual RX ring descriptors: %d\n", rxinfo.nb_desc);
+  printf("Actual TX ring descriptors: %d\n", txinfo.nb_desc);
+  printf("Port %u MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+     dpdkResources_->portId,
+     addr.addr_bytes[0],
+     addr.addr_bytes[1],
+     addr.addr_bytes[2],
+     addr.addr_bytes[3],
+     addr.addr_bytes[4],
+     addr.addr_bytes[5]);
+
 
   // Enable promiscuous mode
   ret = rte_eth_promiscuous_enable(dpdkResources_->portId);
@@ -187,7 +212,7 @@ std::shared_ptr<TTransport> TServerUDPSocket::acceptImpl() {
   if (recvTimeout_ > 0) {
     client->setRecvTimeout(recvTimeout_);
   }
-  fprintf(stderr, "DPDK Initialized, returning client!\n");
+  //fprintf(stderr, "DPDK Initialized, returning client!\n");
   return client;
 }
 

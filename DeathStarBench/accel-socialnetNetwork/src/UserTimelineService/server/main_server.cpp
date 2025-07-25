@@ -4,6 +4,7 @@
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TServerSocket.h>
+#include <thrift/transport/TServerUDPSocket.h>
 
 #include <boost/program_options.hpp>
 
@@ -24,6 +25,7 @@ using apache::thrift::server::TSimpleServer;
 using apache::thrift::transport::TFramedTransportFactory;
 using apache::thrift::transport::TBufferedTransportFactory;
 using apache::thrift::transport::TServerSocket;
+using apache::thrift::transport::TServerUDPSocket;
 using namespace social_network;
 
 void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
@@ -157,6 +159,7 @@ int main(int argc, char *argv[]) {
   }
 
   std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
+  //std::shared_ptr<TServerUDPSocket> server_socket = std::make_shared<TServerUDPSocket>(port); 
 
   // Create handler and business logic based on Redis configuration
   auto handler = std::make_shared<UserTimelineHandler>();
@@ -200,7 +203,7 @@ int main(int argc, char *argv[]) {
     handler->setBusinessLogic(business_logic.get());
 
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
-    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    //TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
                           //  std::make_shared<TFramedTransportFactory>(),
                           std::make_shared<TBufferedTransportFactory>(),

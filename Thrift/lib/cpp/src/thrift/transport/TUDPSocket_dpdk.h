@@ -66,6 +66,7 @@ private:
   std::shared_ptr<DPDKResources> dpdkResources_;
   struct sockaddr_in peerAddr_;  // Keep this for UDP addressing
   void handleArpPacket(struct rte_mbuf* m);
+  struct rte_ether_addr peer_mac_;  // Store client's MAC for responses
 
   int sendTimeout_;
   int recvTimeout_;

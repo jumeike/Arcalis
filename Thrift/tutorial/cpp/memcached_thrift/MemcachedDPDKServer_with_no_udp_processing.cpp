@@ -3019,10 +3019,10 @@ namespace thrift {
     // Minimal EAL arguments
     const char* argv[] = {
         "thrift-server",           // Program name
-        "-l", "0-1",              // Use CPU cores 0-1
+        "-l", "14-15",              // Use CPU cores 0-1
         "-n", "4",                // Number of memory channels
         "--proc-type=auto",       // Process type
-        "-a", "0000:81:00.0",	    // Specify Interface
+        "-a", "0000:51:00.0",	    // Specify Interface
         "--log-level", "8",       // Debug log level
         NULL
     };
@@ -3551,7 +3551,7 @@ uint32_t TUDPSocket::write_partial(const uint8_t* buf, uint32_t len) {
           "-l", "1",              // Use CPU cores 0-1
           "-n", "4",                // Number of memory channels
           "--proc-type=auto",       // Process type
-          "-a", "0000:81:00.0",	    // Specify Interface
+          "-a", "0000:51:00.0",	    // Specify Interface
           "--log-level", "8",       // Debug log level
           NULL
       };

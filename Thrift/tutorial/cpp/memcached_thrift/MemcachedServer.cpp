@@ -169,7 +169,7 @@ class MemcachedServiceHandler : virtual public MemcachedServiceIf {
           // Release our reference
           item_remove(it);
       } else {
-        std::cout << "Item not found for key: " << key_str << std::endl;
+        //std::cout << "Item not found for key: " << key_str << std::endl;
         _return.clear();
       }
     }
@@ -225,14 +225,14 @@ int main(int argc, char **argv) {
     ::std::shared_ptr<TProcessor> processor(new MemcachedServiceProcessor(handler));
     //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket("192.168.1.1", port, true)); // usingKq = true
     //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket("localhost", port));
-    ::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
-    //::std::shared_ptr<TServerTransport> serverTransport(new TServerSocket("192.168.1.1", port));
+    //::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
+    ::std::shared_ptr<TServerTransport> serverTransport(new TServerSocket("192.168.1.1", port));
     ::std::shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     ::std::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
     // ::std::shared_ptr<TProtocolFactory> protocolFactory(new TJSONProtocolFactory());
 
-    //TThreadedServer server(processor, serverTransport, transportFactory, protocolFactory);
-    TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
+    TThreadedServer server(processor, serverTransport, transportFactory, protocolFactory);
+    //TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
     //TFStackSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
     std::cout << "Starting the server on port " << port << "..." << std::endl;
     server.serve();

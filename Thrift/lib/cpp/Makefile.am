@@ -47,6 +47,7 @@ libthrift_la_CPPFLAGS = $(AM_CPPFLAGS) \
 libthrift_la_LIBADD = $(BOOST_LDFLAGS) $(OPENSSL_LDFLAGS) $(OPENSSL_LIBS) $(DPDK_LIBS) #-lrte_net_mlx5 -lrte_common_mlx5 #\
                         #-lfstack $(DPDK_LIBS) \
                         #-lrt -lm -ldl -lcrypto -lnuma
+ libthrift_la_LDFLAGS += $(shell pkg-config --libs libdpdk)
 
 ## We only build the extra libraries if we have the dependencies,
 ## but we install all of the headers unconditionally.
@@ -64,24 +65,27 @@ pkgconfig_DATA += thrift-qt5.pc
 endif
 
 AM_CXXFLAGS = -Wall -Wextra -pedantic
-AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(OPENSSL_INCLUDES) -I$(srcdir)/src \
-                -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS \
-                $(DPDK_CFLAGS) -I${FF_PATH}/lib \
-                #-I$(DPDK_ROOT)/drivers/net/mlx5 \
-                #-I$(DPDK_ROOT)/drivers/common/mlx5 \
-                #-I$(DPDK_ROOT)/build/drivers/common/mlx5 \
-                #-I$(DPDK_ROOT)/drivers/common/mlx5/linux \
-                -I$(DPDK_ROOT)/drivers/bus/pci \
-                -I$(DPDK_ROOT)/drivers/common/dpaax \
-                -I$(DPDK_ROOT)/lib/eal/include \
-                -I$(DPDK_ROOT)/drivers/common \
-                -I$(DPDK_ROOT)/lib/eal/common \
-                -I$(DPDK_ROOT)/lib/ethdev \
-                -I$(DPDK_ROOT)/lib/eal/linux/include \
-                -I$(DPDK_ROOT)/lib/eal/x86/include \
-                -I$(DPDK_ROOT)/config \
-                -I$(DPDK_ROOT)/lib/eal \
-                -I$(DPDK_ROOT)
+#AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(OPENSSL_INCLUDES) -I$(srcdir)/src \
+#                -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS \
+#                $(DPDK_CFLAGS) -I${FF_PATH}/lib \
+#                #-I$(DPDK_ROOT)/drivers/net/mlx5 \
+#                #-I$(DPDK_ROOT)/drivers/common/mlx5 \
+#                #-I$(DPDK_ROOT)/build/drivers/common/mlx5 \
+#                #-I$(DPDK_ROOT)/drivers/common/mlx5/linux \
+#                -I$(DPDK_ROOT)/drivers/bus/pci \
+#                -I$(DPDK_ROOT)/drivers/common/dpaax \
+#                -I$(DPDK_ROOT)/lib/eal/include \
+#                -I$(DPDK_ROOT)/drivers/common \
+#                -I$(DPDK_ROOT)/lib/eal/common \
+#                -I$(DPDK_ROOT)/lib/ethdev \
+#                -I$(DPDK_ROOT)/lib/eal/linux/include \
+#                -I$(DPDK_ROOT)/lib/eal/x86/include \
+#                -I$(DPDK_ROOT)/config \
+#                -I$(DPDK_ROOT)/lib/eal \
+#                -I$(DPDK_ROOT)
+
+AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(OPENSSL_INCLUDES) -I$(srcdir)/src -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS \
+              $(shell pkg-config --cflags libdpdk)
 
 # Define the source files for the module
 # src/thrift/server/TFStackServerFramework.cpp

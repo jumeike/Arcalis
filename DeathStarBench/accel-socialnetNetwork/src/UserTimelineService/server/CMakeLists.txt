@@ -51,9 +51,11 @@ target_link_libraries(
     Boost::log_setup
     Boost::program_options
     #jaegertracing
-    /usr/local/lib/libhiredis.a
+    /usr/lib/x86_64-linux-gnu/libhiredis.a
     /usr/local/lib/libhiredis_ssl.a
     /usr/local/lib/libredis++.a
+    #hiredis
+    #redis++
     OpenSSL::SSL
 )
 

@@ -3,8 +3,8 @@ project(UniqueIdService)
 
 # Debug build type
 set(CMAKE_BUILD_TYPE Debug)
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
 #set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING -DENABLE_GEM5")
 #set(CMAKE_CXX_FLAGS_DEBUG "-g -O3 -DDEBUG_LOGGING")
 
@@ -12,6 +12,7 @@ find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(THRIFT REQUIRED thrift)
+
 
 add_executable(
     UniqueIdService
@@ -30,6 +31,8 @@ target_include_directories(
     #/usr/local/include/jaegertracing
     .
 )
+
+target_link_directories(UniqueIdService PRIVATE /usr/local/lib)
 
 target_link_libraries(
     UniqueIdService

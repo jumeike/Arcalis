@@ -1,0 +1,165 @@
+Buffer refill needed, calling underlyingReadAll
+JU:JU Read 439 bytes from request buffer at position 3584, total size: 4736, address: 732edffffe40
+Request 9: rBase_=0x566cab4cf884, rBound_=0x566cab4cfa37, diff=435, len=4
+Request 9: rBase_=0x566cab4cf891, rBound_=0x566cab4cfa37, diff=422, len=4
+[2025-07-03 00:54:22.996718] <debug>: (PostStorageBusinessLogic.cpp:93:callSWread) Received call: StorePost, seqid: 0
+Reading field begin
+Request 9: rBase_=0x566cab4cf895, rBound_=0x566cab4cfa37, diff=418, len=1
+Request 9: rBase_=0x566cab4cf896, rBound_=0x566cab4cfa37, diff=417, len=2
+Field: type=10, id=1
+Request 9: rBase_=0x566cab4cf898, rBound_=0x566cab4cfa37, diff=415, len=8
+Read req_id: 3
+Reading field begin
+Request 9: rBase_=0x566cab4cf8a0, rBound_=0x566cab4cfa37, diff=407, len=1
+Request 9: rBase_=0x566cab4cf8a1, rBound_=0x566cab4cfa37, diff=406, len=2
+Field: type=12, id=2
+Reading field begin
+Request 9: rBase_=0x566cab4cf8a3, rBound_=0x566cab4cfa37, diff=404, len=1
+Request 9: rBase_=0x566cab4cf8a4, rBound_=0x566cab4cfa37, diff=403, len=2
+Field: type=10, id=1
+Reading field in Post::read: fname:, type: 10, fid: 1
+Request 9: rBase_=0x566cab4cf8a6, rBound_=0x566cab4cfa37, diff=401, len=8
+Post::read: post_id = 1715155406247952384
+Reading field begin
+Request 9: rBase_=0x566cab4cf8ae, rBound_=0x566cab4cfa37, diff=393, len=1
+Request 9: rBase_=0x566cab4cf8af, rBound_=0x566cab4cfa37, diff=392, len=2
+Field: type=12, id=2
+Reading field in Post::read: fname:, type: 12, fid: 2
+Reading field begin
+Request 9: rBase_=0x566cab4cf8b1, rBound_=0x566cab4cfa37, diff=390, len=1
+Request 9: rBase_=0x566cab4cf8b2, rBound_=0x566cab4cfa37, diff=389, len=2
+Field: type=10, id=1
+Request 9: rBase_=0x566cab4cf8b4, rBound_=0x566cab4cfa37, diff=387, len=8
+Reading field begin
+Request 9: rBase_=0x566cab4cf8bc, rBound_=0x566cab4cfa37, diff=379, len=1
+Request 9: rBase_=0x566cab4cf8bd, rBound_=0x566cab4cfa37, diff=378, len=2
+Field: type=11, id=2
+Request 9: rBase_=0x566cab4cf8bf, rBound_=0x566cab4cfa37, diff=376, len=4
+Reading field begin
+Request 9: rBase_=0x566cab4cf8d3, rBound_=0x566cab4cfa37, diff=356, len=1
+Field STOP encountered
+Post::read: creator = Creator(user_id=1000, username=user_00000000000)
+Reading field begin
+Request 9: rBase_=0x566cab4cf8d4, rBound_=0x566cab4cfa37, diff=355, len=1
+Request 9: rBase_=0x566cab4cf8d5, rBound_=0x566cab4cfa37, diff=354, len=2
+Field: type=10, id=3
+Reading field in Post::read: fname:, type: 10, fid: 3
+Request 9: rBase_=0x566cab4cf8d7, rBound_=0x566cab4cfa37, diff=352, len=8
+Post::read: req_id = 3
+Reading field begin
+Request 9: rBase_=0x566cab4cf8df, rBound_=0x566cab4cfa37, diff=344, len=1
+Request 9: rBase_=0x566cab4cf8e0, rBound_=0x566cab4cfa37, diff=343, len=2
+Field: type=11, id=4
+Reading field in Post::read: fname:, type: 11, fid: 4
+Request 9: rBase_=0x566cab4cf8e2, rBound_=0x566cab4cfa37, diff=341, len=4
+Post::read: text = Sample post text from thread 000 with post_id 171515540624795238
+Reading field begin
+Request 9: rBase_=0x566cab4cf926, rBound_=0x566cab4cfa37, diff=273, len=1
+Request 9: rBase_=0x566cab4cf927, rBound_=0x566cab4cfa37, diff=272, len=2
+Field: type=15, id=5
+Reading field in Post::read: fname:, type: 15, fid: 5
+Request 9: rBase_=0x566cab4cf929, rBound_=0x566cab4cfa37, diff=270, len=1
+Request 9: rBase_=0x566cab4cf92a, rBound_=0x566cab4cfa37, diff=269, len=4
+Post::read: user_mentions size = 1
+Reading field begin
+Request 9: rBase_=0x566cab4cf92e, rBound_=0x566cab4cfa37, diff=265, len=1
+Request 9: rBase_=0x566cab4cf92f, rBound_=0x566cab4cfa37, diff=264, len=2
+Field: type=10, id=1
+Request 9: rBase_=0x566cab4cf931, rBound_=0x566cab4cfa37, diff=262, len=8
+Reading field begin
+Request 9: rBase_=0x566cab4cf939, rBound_=0x566cab4cfa37, diff=254, len=1
+Request 9: rBase_=0x566cab4cf93a, rBound_=0x566cab4cfa37, diff=253, len=2
+Field: type=11, id=2
+Request 9: rBase_=0x566cab4cf93c, rBound_=0x566cab4cfa37, diff=251, len=4
+Reading field begin
+Request 9: rBase_=0x566cab4cf950, rBound_=0x566cab4cfa37, diff=231, len=1
+Field STOP encountered
+Reading field begin
+Request 9: rBase_=0x566cab4cf951, rBound_=0x566cab4cfa37, diff=230, len=1
+Request 9: rBase_=0x566cab4cf952, rBound_=0x566cab4cfa37, diff=229, len=2
+Field: type=15, id=6
+Reading field in Post::read: fname:, type: 15, fid: 6
+Request 9: rBase_=0x566cab4cf954, rBound_=0x566cab4cfa37, diff=227, len=1
+Request 9: rBase_=0x566cab4cf955, rBound_=0x566cab4cfa37, diff=226, len=4
+Post::read: media size = 1
+Reading field begin
+Request 9: rBase_=0x566cab4cf959, rBound_=0x566cab4cfa37, diff=222, len=1
+Request 9: rBase_=0x566cab4cf95a, rBound_=0x566cab4cfa37, diff=221, len=2
+Field: type=10, id=1
+Request 9: rBase_=0x566cab4cf95c, rBound_=0x566cab4cfa37, diff=219, len=8
+Reading field begin
+Request 9: rBase_=0x566cab4cf964, rBound_=0x566cab4cfa37, diff=211, len=1
+Request 9: rBase_=0x566cab4cf965, rBound_=0x566cab4cfa37, diff=210, len=2
+Field: type=11, id=2
+Request 9: rBase_=0x566cab4cf967, rBound_=0x566cab4cfa37, diff=208, len=4
+Reading field begin
+Request 9: rBase_=0x566cab4cf973, rBound_=0x566cab4cfa37, diff=196, len=1
+Field STOP encountered
+Post::read: media[0] = Media(media_id=-1295190011230027776, media_type=image   )
+Reading field begin
+Request 9: rBase_=0x566cab4cf974, rBound_=0x566cab4cfa37, diff=195, len=1
+Request 9: rBase_=0x566cab4cf975, rBound_=0x566cab4cfa37, diff=194, len=2
+Field: type=15, id=7
+Reading field in Post::read: fname:, type: 15, fid: 7
+Request 9: rBase_=0x566cab4cf977, rBound_=0x566cab4cfa37, diff=192, len=1
+Request 9: rBase_=0x566cab4cf978, rBound_=0x566cab4cfa37, diff=191, len=4
+Post::read: urls size = 1
+Reading field begin
+Request 9: rBase_=0x566cab4cf97c, rBound_=0x566cab4cfa37, diff=187, len=1
+Request 9: rBase_=0x566cab4cf97d, rBound_=0x566cab4cfa37, diff=186, len=2
+Field: type=11, id=1
+Request 9: rBase_=0x566cab4cf97f, rBound_=0x566cab4cfa37, diff=184, len=4
+Reading field begin
+Request 9: rBase_=0x566cab4cf9a3, rBound_=0x566cab4cfa37, diff=148, len=1
+Request 9: rBase_=0x566cab4cf9a4, rBound_=0x566cab4cfa37, diff=147, len=2
+Field: type=11, id=2
+Request 9: rBase_=0x566cab4cf9a6, rBound_=0x566cab4cfa37, diff=145, len=4
+Reading field begin
+Request 9: rBase_=0x566cab4cf9ea, rBound_=0x566cab4cfa37, diff=77, len=1
+Field STOP encountered
+Post::read: urls[0] = Url(shortened_url=http://short.ly/6247952384      , expanded_url=http://example.com/full_url/00000055406247952384                )
+Reading field begin
+Request 9: rBase_=0x566cab4cf9eb, rBound_=0x566cab4cfa37, diff=76, len=1
+Request 9: rBase_=0x566cab4cf9ec, rBound_=0x566cab4cfa37, diff=75, len=2
+Field: type=10, id=8
+Reading field in Post::read: fname:, type: 10, fid: 8
+Request 9: rBase_=0x566cab4cf9ee, rBound_=0x566cab4cfa37, diff=73, len=8
+Post::read: timestamp = 1751498670388
+Reading field begin
+Request 9: rBase_=0x566cab4cf9f6, rBound_=0x566cab4cfa37, diff=65, len=1
+Request 9: rBase_=0x566cab4cf9f7, rBound_=0x566cab4cfa37, diff=64, len=2
+Field: type=8, id=9
+Reading field in Post::read: fname:, type: 8, fid: 9
+Request 9: rBase_=0x566cab4cf9f9, rBound_=0x566cab4cfa37, diff=62, len=4
+Post::read: post_type = 0
+Reading field begin
+Request 9: rBase_=0x566cab4cf9fd, rBound_=0x566cab4cfa37, diff=58, len=1
+Field STOP encountered
+Reading field in Post::read: fname:, type: 0, fid: 0
+Read post: Post(post_id=1715155406247952384, creator=Creator(user_id=1000, username=user_00000000000), req_id=3, text=Sample post text from thread 000 with post_id 171515540624795238, user_mentions=[UserMention(user_id=1000, username=mentioned_00001 )], media=[Media(media_id=-1295190011230027776, media_type=image   )], urls=[Url(shortened_url=http://short.ly/6247952384      , expanded_url=http://example.com/full_url/00000055406247952384                )], timestamp=1751498670388, post_type=POST)
+Reading field begin
+Request 9: rBase_=0x566cab4cf9fe, rBound_=0x566cab4cfa37, diff=57, len=1
+Request 9: rBase_=0x566cab4cf9ff, rBound_=0x566cab4cfa37, diff=56, len=2
+Field: type=13, id=3
+Request 9: rBase_=0x566cab4cfa01, rBound_=0x566cab4cfa37, diff=54, len=1
+Request 9: rBase_=0x566cab4cfa02, rBound_=0x566cab4cfa37, diff=53, len=1
+Request 9: rBase_=0x566cab4cfa03, rBound_=0x566cab4cfa37, diff=52, len=4
+Read carrier map of size: 2
+Request 9: rBase_=0x566cab4cfa07, rBound_=0x566cab4cfa37, diff=48, len=4
+ReadPost: carrier key = span-id
+Request 9: rBase_=0x566cab4cfa12, rBound_=0x566cab4cfa37, diff=37, len=4
+ReadPost: carrier[span-id] = 00
+Request 9: rBase_=0x566cab4cfa18, rBound_=0x566cab4cfa37, diff=31, len=4
+ReadPost: carrier key = trace-id
+Request 9: rBase_=0x566cab4cfa24, rBound_=0x566cab4cfa37, diff=19, len=4
+ReadPost: carrier[trace-id] = test-0000-0000
+Reading field begin
+Request 9: rBase_=0x566cab4cfa36, rBound_=0x566cab4cfa37, diff=1, len=1
+Field STOP encountered
+[2025-07-03 00:54:22.997039] <debug>: (PostStorageBusinessLogic.cpp:115:callSWread) Read completed for: StorePost, seqid: 0
+[2025-07-03 00:54:22.997046] <debug>: (PostStorageBusinessLogic.cpp:129:callSWdispatch) Dispatching call: StorePost, seqid: 0
+JU:JU PostStorageServiceProcessor::dispatchCall: fname=StorePost, seqid=0
+[2025-07-03 00:54:22.997223] <debug>: (PostStorageBusinessLogic.cpp:697:StorePost) Stored post 1715155406247952384 for request 3
+JU:JU Wrote 22 bytes to response buffer at position 2944, total size: 2944 address: 732e9fffebc0
+[2025-07-03 00:54:22.997234] <debug>: (PostStorageBusinessLogic.cpp:345:runLoop) JU:JU Run loop iteration: 9
+Request 9: rBase_=0x566cab4cfa37, rBound_=0x566cab4cfa37, diff=0, len=4

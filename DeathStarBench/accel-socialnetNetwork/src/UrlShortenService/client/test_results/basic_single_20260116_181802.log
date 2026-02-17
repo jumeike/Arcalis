@@ -1,0 +1,24 @@
+=== UrlShorten Service Client Test ===
+Server: localhost:9090
+Threads: 1
+Operations per thread: 50
+Warmup operations per thread: 10
+
+
+=== TEST RESULTS ===
+Total Requests: 50
+Successful: 50 (100%)
+Failed: 0 (0%)
+
+=== OPERATION BREAKDOWN ===
+ComposeUrls operations: 21
+GetExtendedUrls operations: 29
+
+=== PERFORMANCE ===
+Total Duration: 34 ms
+Throughput: 1470.59 req/s
+
+=== LATENCY ===
+Average: 510 μs
+Min: 181 μs
+Max: 1673 μs

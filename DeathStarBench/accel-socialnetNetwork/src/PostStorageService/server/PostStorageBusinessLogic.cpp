@@ -352,7 +352,7 @@ void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* proce
     LOG(info) << "JU:JU =========================================";
 }
 #ifdef ENABLE_CEREBELLUM
-void PostStorageBusinessLogic::serializePostToResponse(const Post& post) {
+void PostStorageBusinessLogic::serializePostToResponse(const Post& post) { // updated in diskimage
   uint8_t* buf = resp_buf_;
   size_t offset = 0;
   
@@ -415,7 +415,7 @@ void PostStorageBusinessLogic::serializePostsToResponse(const std::vector<Post>&
   resp_buf_size_ = posts.size() * CACHE_LINES_PER_POST * CACHE_LINE_SIZE;
 }
 
-void PostStorageBusinessLogic::serializePostAtOffset(uint8_t* buf, size_t base_offset, const Post& post) {
+void PostStorageBusinessLogic::serializePostAtOffset(uint8_t* buf, size_t base_offset, const Post& post) { // updated in diskimage
   size_t offset = base_offset;
   
   // Serialize Post fields in same order as ReadPost

@@ -23,10 +23,10 @@ public:
         std::string ext = binary_mode ? ".bin" : ".csv";
         auto flags = binary_mode ? (std::ios::out | std::ios::binary) : std::ios::out;
         
-        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc_1k" + ext, flags);
-        rpc_to_app_.open(dirName + "/rpc_to_app_1k" + ext, flags);
-        app_to_rpc_.open(dirName + "/app_to_rpc_1k" + ext, flags);
-        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk_1k" + ext, flags);
+        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc_200k_1k_01" + ext, flags);
+        rpc_to_app_.open(dirName + "/rpc_to_app_200k_1k_01" + ext, flags);
+        app_to_rpc_.open(dirName + "/app_to_rpc_200k_1k_01" + ext, flags);
+        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk_200k_1k_01" + ext, flags);
         
         if (!binary_mode) {
             writeCSVHeaders();

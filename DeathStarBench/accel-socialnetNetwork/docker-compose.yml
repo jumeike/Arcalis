@@ -28,3 +28,18 @@ services:
       - 27020:27017
     restart: always
 
+  url-shorten-memcached:
+    image: memcached
+    hostname: url-shorten-memcached
+    ports:
+      - 11213:11211
+    restart: always
+
+  url-shorten-mongodb:
+    image: mongo:4.4.6
+    hostname: url-shorten-mongodb
+    ports:
+      - 27021:27017
+    restart: always
+
+

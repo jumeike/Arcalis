@@ -2,3 +2,5 @@
 Thrift/.git/
 DeathStarBench/.git/
 *.csv
+cloudlab-vtune-results/
+NMAcc-mt/

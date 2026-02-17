@@ -60,7 +60,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                    int requests_per_thread, int warmup_requests, bool verbose) {
     try {
         // Create Thrift client connection
-        std::shared_ptr<TTransport> socket(new TUDPSocket(server_host, server_port));
+        std::shared_ptr<TTransport> socket(new TSocket(server_host, server_port));
         std::shared_ptr<TTransport> transport(new TBufferedTransport(socket, 2048));
         std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
         UniqueIdServiceClient client(protocol);

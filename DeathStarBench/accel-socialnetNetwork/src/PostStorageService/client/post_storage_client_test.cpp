@@ -60,6 +60,11 @@ struct TestMetrics {
 
 TestMetrics global_metrics;
 
+// Global operation weights
+float global_store_weight = 0.33f;
+float global_read_weight = 0.33f;
+float global_read_multi_weight = 0.34f;
+
 // Helper function to create a sample post with fixed-length strings
 Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     Post post;
@@ -166,7 +171,7 @@ uint64_t generateUniquePostId(int thread_id) {
 void client_thread(int thread_id, const std::string& server_host, int server_port, 
                    int operations_per_thread, int warmup_operations, bool verbose) {
     try {
-        std::shared_ptr<TTransport> socket(new TUDPSocket(server_host, server_port));
+        std::shared_ptr<TTransport> socket(new TSocket(server_host, server_port));
         //std::shared_ptr<TTransport> transport(new TFramedTransport(socket));
         std::shared_ptr<TTransport> transport(new TBufferedTransport(socket, 2048));
         std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
@@ -181,7 +186,8 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         // Random number generators
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<> operation_dist(0, 2); // 0=store, 1=read, 2=read_multi
+        //std::uniform_int_distribution<> operation_dist(0, 2); // 0=store, 1=read, 2=read_multi
+        std::uniform_real_distribution<float> operation_dist(0.0f, 1.0f);
         std::uniform_int_distribution<> post_count_dist(1, 5); // For read_multi
         
         std::vector<int64_t> stored_post_ids; // Track what we've stored
@@ -222,8 +228,17 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             carrier["trace-id"] = "test-0000-0000";  // Fixed 14-char string
             carrier["span-id"] = "00";               // Fixed 2-char string
 
-            int operation = operation_dist(gen);
+            //int operation = operation_dist(gen);
             //int operation = i % 3;
+            float op_rand = operation_dist(gen);
+            int operation;
+            if (op_rand < global_store_weight) {
+                operation = 0; // Store
+            } else if (op_rand < global_store_weight + global_read_weight) {
+                operation = 1; // Read  
+            } else {
+                operation = 2; // ReadMulti
+            }
             auto start_time = std::chrono::high_resolution_clock::now();
             
             try {
@@ -242,7 +257,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                         std::cout << "Thread " << thread_id << " stored post " << post_id << std::endl;
                     }
                     
-                } else if (operation == 2) {
+                } else if (operation == 1) {
                     // Read single post
                     int idx = gen() % stored_post_ids.size();
                     int64_t post_id = stored_post_ids[idx];
@@ -382,6 +397,10 @@ int main(int argc, char* argv[]) {
     int operations_per_thread = 500;
     int warmup_operations = 10;
     bool verbose = false;
+    // Add command line options for operation weights
+    float store_weight = 0.33f;  // Default 33%
+    float read_weight = 0.33f;   // Default 33%
+    float read_multi_weight = 0.34f; // Default 34%
     
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
@@ -398,6 +417,12 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) warmup_operations = std::stoi(argv[++i]);
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } else if (arg == "-sw" || arg == "--store-weight") {
+            if (i + 1 < argc) store_weight = std::stof(argv[++i]);
+        } else if (arg == "-rw" || arg == "--read-weight") {
+            if (i + 1 < argc) read_weight = std::stof(argv[++i]);
+        } else if (arg == "-rmw" || arg == "--read-multi-weight") {
+            if (i + 1 < argc) read_multi_weight = std::stof(argv[++i]);
         } else if (arg == "--help") {
             print_usage(argv[0]);
             return 0;
@@ -409,6 +434,16 @@ int main(int argc, char* argv[]) {
         warmup_operations = 10;
         std::cout << "<Warning>: Warmup cannot be 0, set to default 10" << std::endl;
     }
+
+    // Normalize weights to sum to 1.0
+    float total_weight = store_weight + read_weight + read_multi_weight;
+    store_weight /= total_weight;
+    read_weight /= total_weight;
+    read_multi_weight /= total_weight;
+    
+    global_store_weight = store_weight;
+    global_read_weight = read_weight;
+    global_read_multi_weight = read_multi_weight; 
     
     std::cout << "=== PostStorage Service Client Test ===" << std::endl;
     std::cout << "Server: " << server_host << ":" << server_port << std::endl;

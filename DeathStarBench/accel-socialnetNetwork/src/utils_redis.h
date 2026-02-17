@@ -14,6 +14,7 @@ Redis init_redis_client_pool(
   ConnectionOptions connection_options;
   connection_options.host = config_json[service_name + "-redis"]["addr"];
   connection_options.port = config_json[service_name + "-redis"]["port"];
+  connection_options.connect_timeout = std::chrono::milliseconds(3000);  
 
   if (config_json["ssl"]["enabled"]) {
     std::string ca_file = config_json["ssl"]["caPath"];

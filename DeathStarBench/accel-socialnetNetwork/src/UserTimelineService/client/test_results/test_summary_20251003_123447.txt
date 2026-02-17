@@ -1,0 +1,145 @@
+UserTimeline Service Test Summary
+Generated: Fri Oct  3 12:34:47 PM EDT 2025
+UserTimeline Server: localhost:9092
+PostStorage Server: localhost:9091
+
+=== basic_multi_thread_20251003_123439.log ===
+Throughput: 1111.11 req/s
+Avg Latency: 1210 μs
+Success Rate: 20 (100%)
+Total Operations: 20
+Write Operations: 9
+Read Operations: 11
+Errors: 0
+0
+
+=== basic_single_thread_20251003_123439.log ===
+Throughput: 384.615 req/s
+Avg Latency: 2045 μs
+Success Rate: 10 (100%)
+Total Operations: 10
+Write Operations: 3
+Read Operations: 7
+Errors: 0
+0
+
+=== basic_timeline_ops_20251003_123439.log ===
+Throughput: 434.783 req/s
+Avg Latency: 1903 μs
+Success Rate: 20 (100%)
+Total Operations: 20
+Write Operations: 10
+Read Operations: 10
+Errors: 0
+0
+
+=== perf_2threads_20251003_123440.log ===
+Throughput: 1470.59 req/s
+Avg Latency: 1180 μs
+Success Rate: 200 (100%)
+Total Operations: 200
+Write Operations: 103
+Read Operations: 97
+Errors: 0
+0
+
+=== perf_4threads_20251003_123440.log ===
+Throughput: 3053.44 req/s
+Avg Latency: 1120 μs
+Success Rate: 400 (100%)
+Total Operations: 400
+Write Operations: 180
+Read Operations: 220
+Errors: 0
+0
+
+=== perf_8threads_20251003_123440.log ===
+Throughput: 5925.93 req/s
+Avg Latency: 1140 μs
+Success Rate: 800 (100%)
+Total Operations: 800
+Write Operations: 395
+Read Operations: 405
+Errors: 0
+0
+
+=== perf_high_load_20251003_123440.log ===
+Throughput: 3484.32 req/s
+Avg Latency: 1073 μs
+Success Rate: 2000 (100%)
+Total Operations: 2000
+Write Operations: 982
+Read Operations: 1018
+Errors: 0
+0
+
+=== perf_sustained_20251003_123441.log ===
+Throughput: 6700.17 req/s
+Avg Latency: 1125 μs
+Success Rate: 8000 (100%)
+Total Operations: 8000
+Write Operations: 4083
+Read Operations: 3917
+Errors: 0
+0
+
+=== stress_burst_20251003_123446.log ===
+Throughput: 6302.52 req/s
+Avg Latency: 1698 μs
+Success Rate: 6000 (100%)
+Total Operations: 6000
+Write Operations: 3077
+Read Operations: 2923
+Errors: 0
+0
+
+=== stress_many_ops_20251003_123443.log ===
+Throughput: 5458.89 req/s
+Avg Latency: 1364 μs
+Success Rate: 16000 (100%)
+Total Operations: 16000
+Write Operations: 8052
+Read Operations: 7948
+Errors: 0
+0
+
+=== stress_many_threads_20251003_123443.log ===
+Throughput: 9142.86 req/s
+Avg Latency: 1358 μs
+Success Rate: 3200 (100%)
+Total Operations: 3200
+Write Operations: 1627
+Read Operations: 1573
+Errors: 0
+0
+
+=== timeline_mixed_20251003_123442.log ===
+Throughput: 4466.5 req/s
+Avg Latency: 1139 μs
+Success Rate: 1800 (100%)
+Total Operations: 1800
+Write Operations: 883
+Read Operations: 917
+Errors: 0
+0
+
+=== timeline_reads_20251003_123442.log ===
+Throughput: 2996.25 req/s
+Avg Latency: 1098 μs
+Success Rate: 800 (100%)
+Total Operations: 800
+Write Operations: 419
+Read Operations: 381
+Errors: 0
+0
+
+=== timeline_writes_20251003_123442.log ===
+Throughput: 2877.7 req/s
+Avg Latency: 1109 μs
+Success Rate: 400 (100%)
+Total Operations: 400
+Write Operations: 198
+Read Operations: 202
+Errors: 0
+0
+

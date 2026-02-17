@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
     handler->setBusinessLogic(business_logic.get());
 
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
-    //TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
                           //  std::make_shared<TFramedTransportFactory>(),
                           std::make_shared<TBufferedTransportFactory>(),

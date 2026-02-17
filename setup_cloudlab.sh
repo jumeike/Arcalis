@@ -43,8 +43,8 @@ sudo ninja install
 echo 2048 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 sudo apt update
-sudo apt install build-essential cmake pkg-config \
-  libboost-all-dev nlohmann-json3-dev libthrift-dev \
+sudo apt install -y build-essential cmake pkg-config \
+  libboost-all-dev nlohmann-json3-dev \
   libmemcached-dev libmongoc-dev libbson-dev \
   libssl-dev libhiredis-dev
 

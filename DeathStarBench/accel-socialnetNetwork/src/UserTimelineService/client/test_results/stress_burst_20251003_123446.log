@@ -1,0 +1,29 @@
+=== UserTimeline Service Client Test ===
+Server: localhost:9092
+Threads: 12
+Operations per thread: 500
+Warmup operations per thread: 100
+Mix: Write/Read timeline operations
+
+
+=== TEST RESULTS ===
+Total Requests: 6000
+Successful: 6000 (100%)
+Failed: 0 (0%)
+
+=== OPERATION BREAKDOWN ===
+Write operations: 3077
+Read operations: 2923
+Post store operations: 3077
+
+=== PERFORMANCE ===
+Total Duration: 952 ms
+Throughput: 6302.52 req/s
+
+=== LATENCY ===
+Average: 1698 μs
+Min: 405 μs
+Max: 6807 μs
+P50: 826 μs
+P95: 4078 μs
+P99: 4559 μs

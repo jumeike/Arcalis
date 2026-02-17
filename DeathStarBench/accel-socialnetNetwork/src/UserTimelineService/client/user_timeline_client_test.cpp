@@ -58,6 +58,10 @@ struct TestMetrics {
 };
 
 TestMetrics global_metrics;
+
+// Global operation weights
+float global_write_weight = 0.5f;
+float global_read_weight = 0.5f;
 // Helper function to create a sample post with fixed-length strings
 Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     Post post;
@@ -188,7 +192,8 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         // Random number generators
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<> operation_dist(0, 1); // 0=write, 1=read
+        // std::uniform_int_distribution<> operation_dist(0, 1); // 0=write, 1=read
+        std::uniform_real_distribution<float> operation_dist(0.0f, 1.0f);
         std::uniform_int_distribution<> user_dist(1, 100); // User IDs 1-100
         std::uniform_int_distribution<> read_size_dist(5, 20); // Timeline read size
         
@@ -235,7 +240,9 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             carrier["trace-id"] = "test-0000-0000";  // Fixed 14-char string
             carrier["span-id"] = "00";               // Fixed 2-char string
 
-            int operation = operation_dist(gen);
+            // int operation = operation_dist(gen);
+            float op_rand = operation_dist(gen);
+            int operation = (op_rand < global_write_weight) ? 0 : 1;
             auto start_time = std::chrono::high_resolution_clock::now();
             
             try {
@@ -376,9 +383,12 @@ int main(int argc, char* argv[]) {
     int server_port = 9092;
     int num_threads = 4;
     int operations_per_thread = 500;
-    int warmup_operations = 50;
+    int warmup_operations = 10;
     bool verbose = false;
-    
+    // Add command line options for operation weights
+    float write_weight = 0.5f;
+    float read_weight = 0.5f;
+
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -394,11 +404,30 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) warmup_operations = std::stoi(argv[++i]);
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } else if (arg == "-ww" || arg == "--write-weight") {
+            if (i + 1 < argc) write_weight = std::stof(argv[++i]);
+        } else if (arg == "-rw" || arg == "--read-weight") {
+            if (i + 1 < argc) read_weight = std::stof(argv[++i]);
         } else if (arg == "--help") {
             print_usage(argv[0]);
             return 0;
         }
     }
+    
+    // Check warmup operations
+    if (warmup_operations == 0) {
+        warmup_operations = 10;
+        std::cout << "<Warning>: Warmup cannot be 0, set to default 10" << std::endl;
+    }
+
+    // Normalize weights
+    float total_weight = write_weight + read_weight;
+    write_weight /= total_weight;
+    read_weight /= total_weight;
+
+    global_write_weight = write_weight;
+    global_read_weight = read_weight;
+
     
     std::cout << "=== UserTimeline Service Client Test ===" << std::endl;
     std::cout << "Server: " << server_host << ":" << server_port << std::endl;

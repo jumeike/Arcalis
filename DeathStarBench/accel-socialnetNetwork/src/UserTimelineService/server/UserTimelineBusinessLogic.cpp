@@ -388,7 +388,8 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
   
   std::vector<Post> posts;
   try {
-    posts = post_future.get();
+    posts = post_future.get(); // Blocking call to get the result
+    LOG(debug) << "Successfully got posts from post-storage-service";
     _post_service_calls++;
   } catch (...) {
     LOG(error) << "Failed to get posts from post-storage-service";
@@ -406,9 +407,19 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
 
     // std::vector<Post> _return_posts;
     // auto post_client = post_client_wrapper->GetClient();
-    // LOG(info) << "About to read posts from post-storage-service";
-    // post_client->ReadPosts(_return_posts, req_id, post_ids, carrier);  // This will block here if service is down
-    // LOG(info) << "Successfully read posts from post-storage-service";
+    // try {
+    //   LOG(debug) << "About to read posts from post-storage-service";
+    //   post_client->ReadPosts(_return_posts, req_id, post_ids, carrier); // Blocking call
+    //   LOG(debug) << "Successfully read posts from post-storage-service";
+
+    //   // CRITICAL: Return connection to pool on success
+    //   _post_client_pool->Keepalive(post_client_wrapper);
+    // } catch (...) {
+    //   // CRITICAL: Remove bad connection on failure  
+    //   _post_client_pool->Remove(post_client_wrapper);
+    //   LOG(error) << "Failed to read posts from post-storage-service";
+    //   throw;
+    // }
     
     // std::vector<Post> posts = _return_posts;
     // _post_service_calls++;

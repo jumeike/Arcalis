@@ -126,13 +126,13 @@ int main(int argc, char *argv[]) {
 #endif // ENABLE_GEM5
 
   // Create server
-  //std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
-  std::shared_ptr<TServerUDPSocket> server_socket = std::make_shared<TServerUDPSocket>(port); 
+  std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
+  //std::shared_ptr<TServerUDPSocket> server_socket = std::make_shared<TServerUDPSocket>(port); 
 #ifdef ENABLE_GEM5
   TSimpleServer server(
 #else
-  TSimpleServer server(
-  //TThreadedServer server(
+  //TSimpleServer server(
+  TThreadedServer server(
 #endif // ENABLE_GEM5
       std::make_shared<UniqueIdServiceProcessor>(handler),
       server_socket,

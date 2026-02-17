@@ -24,9 +24,9 @@
   },
   "url-shorten-memcached": {
     "keepalive_ms": 10000,
-    "addr": "url-shorten-memcached",
+    "addr": "localhost",
     "timeout_ms": 10000,
-    "port": 11211,
+    "port": 11213,
     "connections": 512,
     "binary_protocol": 1
   },
@@ -184,9 +184,9 @@
   },
   "url-shorten-mongodb": {
     "keepalive_ms": 10000,
-    "addr": "url-shorten-mongodb",
+    "addr": "localhost",
     "timeout_ms": 10000,
-    "port": 27017,
+    "port": 27021,
     "connections": 512
   },
   "url-shorten-service": {

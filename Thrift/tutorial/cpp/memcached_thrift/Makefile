@@ -2,11 +2,17 @@ CC = gcc
 CXX = g++
 CXXFLAGS = -std=c++17 -g -Wall
 
+#INCLUDES = -I/usr/include -I/usr/local/include -I. \
+#	-I$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached \
+#    -I$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached/include
+#LDFLAGS = -L/usr/local/lib \
+#          -L$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached
+
 INCLUDES = -I/usr/include -I/usr/local/include -I. \
-	-I$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached \
-    -I$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached/include
+    -I$(CURDIR)/memcached \
+    -I$(CURDIR)/memcached/include
 LDFLAGS = -L/usr/local/lib \
-          -L$(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached
+    -L$(CURDIR)/memcached_thrift/memcached
 
 # Libraries
 THRIFT_LIBS = -lthrift
@@ -15,7 +21,7 @@ FSTACK_LIBS = #-lfstack
 DPDK_LIBS = $(shell pkg-config --libs libdpdk)
 DPDK_FLAGS := $(shell pkg-config --cflags libdpdk)
 
-MEMCACHED_BASE = $(HOME)/NMAcc-DPDK/tutorial/cpp/memcached_thrift/memcached
+MEMCACHED_BASE = $(CURDIR)/memcached
 
 # Source files
 THRIFT_GEN = gen-cpp/MemcachedService.cpp

@@ -3674,6 +3674,7 @@ namespace thrift {
           "thrift-server",           // Program name
           "-l", "0-1",              // Use CPU cores 0-1
           "-n", "4",                // Number of memory channels
+          "-a", "0000:81:00.0",	    // Specify Interface
           "--proc-type=auto",       // Process type
           "--log-level", "8",       // Debug log level
           NULL
@@ -3737,6 +3738,8 @@ namespace thrift {
     dpdkResources_->portConf.txmode.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | 
                                               RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
 
+    printf("Port %u driver name: %s, if_index: %d\n",
+		           dpdkResources_->portId, dpdkResources_->devInfo.driver_name, dpdkResources_->devInfo.if_index);
     // Configure device
     int ret = rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
     if (ret != 0) {

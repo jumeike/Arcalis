@@ -24,6 +24,7 @@
 #include <vector>
 #include <climits>
 #include <boost/numeric/conversion/cast.hpp>
+#include <cstddef>
 
 // Network headers
 #include <netinet/in.h>
@@ -252,7 +253,7 @@ extern "C" {
 #undef _THRIFT_UNDEF_WIN32_LEAN_AND_MEAN
 #endif
 #endif
-std::string execution_mode = "file";
+
 // #include <thrift/transport/TTransport.h>
 // #include <thrift/protocol/TProtocolException.h>
 // #include <thrift/protocol/TEnum.h>
@@ -554,10 +555,40 @@ static inline To bitwise_cast(From from) {
 // #include <thrift/concurrency/ThreadFactory.h>
 // #include <memory>
 
+template <typename T, std::size_t Alignment>
+struct aligned_allocator {
+    using value_type = T;
+    
+    T* allocate(std::size_t n) {
+        void* ptr = std::aligned_alloc(Alignment, n * sizeof(T));
+        return static_cast<T*>(ptr);
+    }
+    
+    void deallocate(T* p, std::size_t n) {
+        std::free(p);
+    }
+    
+    // Required typedefs
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    
+    // Required for rebinding
+    template <typename U>
+    struct rebind {
+        using other = aligned_allocator<U, Alignment>;
+    };
+};
+
 class PacketReplaySocket {
     std::ifstream replay_file_;
     std::ofstream response_file_;
     bool eof_reached_{false};
+    std::vector <uint8_t, aligned_allocator<uint8_t, 64>> alignedRpcData;
+    std::vector <uint8_t, aligned_allocator<uint8_t, 64>> alignedDpdkData;
     
 public:
     static PacketReplaySocket& getInstance() {
@@ -567,60 +598,140 @@ public:
 
     bool isEOF() const { return eof_reached_; }
     
+    // Method to reorganize file data into aligned positions
+    std::vector<uint8_t, aligned_allocator<uint8_t, 64>> alignRpcData(
+        const std::vector<uint8_t>& rpcData
+    ) {
+        // std::vector<uint8_t, aligned_allocator<uint8_t, 64>> alignedRpcData;
+        size_t read_pos = 0;
+        size_t write_pos = 0;
+
+        while (read_pos + sizeof(uint64_t) + sizeof(uint16_t) <= rpcData.size()) {
+            // uint64_t timestamp = *reinterpret_cast<const uint64_t*>(rpcData.data() + read_pos);
+            uint16_t pkt_len = *reinterpret_cast<const uint16_t*>(rpcData.data() + read_pos + sizeof(uint64_t));
+
+            // Calculate total packet size
+            size_t total_size = sizeof(uint64_t) + sizeof(uint16_t) + pkt_len;
+            
+            
+            alignedRpcData.resize(write_pos + total_size);
+            std::memcpy(alignedRpcData.data() + write_pos, rpcData.data() + read_pos, total_size);
+            
+            read_pos += total_size;
+            write_pos += total_size;
+            write_pos = (write_pos + 63) & ~63; // Next 64-byte aligned position
+        }
+        return alignedRpcData;
+    }
+
+    void printFirstTenPackets() {
+      static size_t read_pos = 0;
+      uint8_t buffer[4096]; // Buffer to hold packet data, ensure it's large enough
+      int pkt_count = 0;
+      
+      // Print first 10 packets
+      while (pkt_count < 10) {
+          // Check if enough data remains
+          if (read_pos + sizeof(uint64_t) + sizeof(uint16_t) > alignedRpcData.size()) {
+              std::cout << "No more data to read.\n";
+              break;
+          }
+          
+          // Read packet header
+          uint64_t timestamp = *reinterpret_cast<const uint64_t*>(alignedRpcData.data() + read_pos);
+          uint16_t pkt_len = *reinterpret_cast<const uint16_t*>(alignedRpcData.data() + read_pos + sizeof(uint64_t));
+          
+          // Print packet info
+          std::cout << "Packet " << pkt_count + 1 << ":\n";
+          std::cout << "  Timestamp: " << timestamp << "\n";
+          std::cout << "  Length: " << pkt_len << " bytes\n";
+          
+          // Copy and print all packet data
+          std::memcpy(buffer, alignedRpcData.data() + read_pos + sizeof(uint64_t) + sizeof(uint16_t), pkt_len);
+          
+          std::cout << "  Data: ";
+          for (uint32_t i = 0; i < pkt_len; i++) {
+              // Add a newline and indentation every 16 bytes for readability
+              if (i > 0 && i % 16 == 0) {
+                  std::cout << "\n        ";
+              }
+              std::cout << std::hex << std::setw(2) << std::setfill('0') 
+                        << static_cast<int>(buffer[i]) << " ";
+          }
+          std::cout << std::dec << "\n\n";
+          
+          // Update position
+          read_pos += sizeof(uint64_t) + sizeof(uint16_t) + pkt_len;
+          read_pos = (read_pos + 63) & ~63;  // Align for next read
+          
+          // Increment counter
+          pkt_count++;
+          
+          // Check if EOF reached
+          if (read_pos >= alignedRpcData.size()) {
+              std::cout << "End of data reached after " << pkt_count << " packets.\n";
+              break;
+          }
+      }
+    }
+    
     uint32_t read(uint8_t* buf, uint32_t max_len) {
-        if (!replay_file_.is_open()) return 0;
-        
-        uint64_t timestamp;
-        uint16_t pkt_len;
-        
-        // Check for EOF before each read
-        if (!replay_file_.read(reinterpret_cast<char*>(&timestamp), sizeof(timestamp)) ||
-            !replay_file_.read(reinterpret_cast<char*>(&pkt_len), sizeof(pkt_len))) {
-            std::cout << "End of replay file reached\n";
-            replay_file_.close();
-            // exit(0);  // Exit the program when replay is complete
+        static size_t read_pos = 0;
+
+        // Check if enough data remains
+        if (read_pos + sizeof(uint64_t) + sizeof(uint16_t) > alignedRpcData.size()) {
+            std::cout << "No more data to read.\n";
             return 0;
         }
         
-        uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(pkt_len));
-        replay_file_.read(reinterpret_cast<char*>(buf), copy_len);
-        // std::cout << "Called read with copy_len: " << copy_len << std::endl;
+        // Read packet header
+        // uint64_t timestamp = *reinterpret_cast<const uint64_t*>(alignedRpcData.data() + read_pos);
+        uint16_t pkt_len = *reinterpret_cast<const uint16_t*>(alignedRpcData.data() + read_pos + sizeof(uint64_t));
         
-        // std::cout << "Replay Read: " << copy_len << " bytes\n";
-        // std::cout << "First 32 bytes: ";
-        // for(uint32_t i = 0; i < std::min(32u, copy_len); i++) {
-        //     printf("%02x ", buf[i]);
-        // }
-        // std::cout << "\nBuffer as int32: " << *(reinterpret_cast<int32_t*>(buf)) << std::endl;
+        // Copy packet data
+        uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(pkt_len));
+        std::memcpy(buf, alignedRpcData.data() + read_pos + sizeof(uint64_t) + sizeof(uint16_t), copy_len);
+        
+        // Update position
+        read_pos += sizeof(uint64_t) + sizeof(uint16_t) + pkt_len;
+        read_pos = (read_pos + 63) & ~63;  // Align for next read
 
-        // Peek next packet to set EOF flag
-        std::streampos current_pos = replay_file_.tellg();
-        if (!replay_file_.read(reinterpret_cast<char*>(&timestamp), sizeof(timestamp))) {
+        // Check if EOF reached
+        if (read_pos >= alignedRpcData.size()) {
             eof_reached_ = true;
             std::cout << "End of replay file reached. Set EOF flag.\n";
         }
-        replay_file_.seekg(current_pos);
         
         return copy_len;
     }
     
     void write(const uint8_t* buf, uint32_t len) {
-        if (!response_file_.is_open()) return;
+        static size_t write_pos = 0;
+
+        // Calculate total size needed
+        size_t total_size = sizeof(uint64_t) + sizeof(uint16_t) + len;
         
+        // Resize vector if needed
+        if (write_pos + total_size > alignedDpdkData.size()) {
+            alignedDpdkData.resize(write_pos + total_size);
+        }
+
+        // Write timestamp, length and data
         uint64_t timestamp = getCurrentTimestamp();
-        uint16_t length = static_cast<uint16_t>(len);
-        
-        response_file_.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
-        response_file_.write(reinterpret_cast<const char*>(&length), sizeof(length));
-        response_file_.write(reinterpret_cast<const char*>(buf), len);
-        response_file_.flush();
+        *reinterpret_cast<uint64_t*>(alignedDpdkData.data() + write_pos) = timestamp;
+        *reinterpret_cast<uint16_t*>(alignedDpdkData.data() + write_pos + sizeof(uint64_t)) = len;
+        std::memcpy(alignedDpdkData.data() + write_pos + sizeof(uint64_t) + sizeof(uint16_t), buf, len);
+
+        // Update position for next write
+        write_pos += total_size;
+        write_pos = (write_pos + 63) & ~63;  // Align for next write
     }
 
 private:
-    PacketReplaySocket(const std::string& replay_path = "dpdk_to_rpc_100k.log") {
-        replay_file_.open(replay_path, std::ios::binary);
-        response_file_.open("rpc_responses.log", std::ios::binary);
-    }
+    // PacketReplaySocket(const std::string& replay_path = "dpdk_to_rpc_10k.log") {
+    //     replay_file_.open(replay_path, std::ios::binary);
+    //     response_file_.open("rpc_responses.log", std::ios::binary);
+    // }
 
     uint64_t getCurrentTimestamp() {
         auto now = std::chrono::system_clock::now();
@@ -2993,7 +3104,7 @@ namespace thrift {
     static const uint16_t MBUF_CACHE_SIZE = 512;
     static const uint16_t BURST_SIZE = 128;
 
-    TUDPSocket(std::shared_ptr<::apache::thrift::TConfiguration> config = nullptr);
+    TUDPSocket(std::vector <uint8_t>& rpcData, std::shared_ptr<::apache::thrift::TConfiguration> config = nullptr);
     TUDPSocket(const std::string& host, int port, std::shared_ptr<::apache::thrift::TConfiguration> config = nullptr);
     TUDPSocket(std::shared_ptr<DPDKResources> dpdkResources, 
                 std::shared_ptr<::apache::thrift::TConfiguration> config = nullptr);
@@ -3056,7 +3167,7 @@ namespace thrift {
 
 
 
-  TUDPSocket::TUDPSocket(std::shared_ptr<::apache::thrift::TConfiguration> config)
+  TUDPSocket::TUDPSocket(std::vector <uint8_t>& rpcData, std::shared_ptr<::apache::thrift::TConfiguration> config)
     : TVirtualTransport(config)
     , replay_(PacketReplaySocket::getInstance())
     , logger_(PacketLogger::getInstance())
@@ -3066,22 +3177,24 @@ namespace thrift {
     , sendTimeout_(0)
     , recvTimeout_(0) {
 
-      if (execution_mode == "dpdk") {
+        // Align RPC data
+        replay_.alignRpcData(rpcData);
+        //replay_.printFirstTenPackets();
+        
         // Get same shared memory instance
-        auto& mgr = SharedMemoryManager::getInstance();
-        shared_mem_ = mgr.initSharedMemory();
-        if (!shared_mem_) {
-            throw TTransportException(TTransportException::NOT_OPEN,
-                                    "Could not get shared memory in TUDPSocket");
-        }
+        // auto& mgr = SharedMemoryManager::getInstance();
+        // shared_mem_ = mgr.initSharedMemory();
+        // if (!shared_mem_) {
+        //     throw TTransportException(TTransportException::NOT_OPEN,
+        //                             "Could not get shared memory in TUDPSocket");
+        // }
         // Get DPDK handler instance
-        // auto& dpdk = DPDKHandler::getInstance();
+        //auto& dpdk = DPDKHandler::getInstance();
 
         // Set callback for received packets
         //dpdk.setPacketCallback([this](uint8_t* data, uint32_t len) {
         //    handleReceivedData(data, len);
         //});
-      }
   }
 
   TUDPSocket::TUDPSocket(const std::string& host, int port, std::shared_ptr<::apache::thrift::TConfiguration> config)
@@ -3416,74 +3529,62 @@ namespace thrift {
 //      auto& dpdk = DPDKHandler::getInstance();
 //      dpdk.sendData(buf, len);
 //  }
-    
-    uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-      // Shared Memory Implementation
-      if (execution_mode == "dpdk") {
-        // Wait for data from DPDK
-        sem_wait(&shared_mem_->rx_buffer.sem);
-        pthread_mutex_lock(&shared_mem_->rx_buffer.mutex);
-
-        if (!shared_mem_->rx_buffer.has_data) {
-            pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
-            return 0;
-        }
-
-        // Copy data from shared memory
-        uint32_t copy_len = std::min(len, (uint32_t)shared_mem_->rx_buffer.size);
-        memcpy(buf, shared_mem_->rx_buffer.data, copy_len);
-
-        if (copy_len > 0) {
-          logger_.logDPDKToRPC(buf, copy_len);
-        }
-
-        // std::cout << "Shared Memory Read: " << copy_len << " bytes\n";
-        // std::cout << "First 32 bytes: ";
-        // for(uint32_t i = 0; i < std::min(copy_len, 32u); i++) {
-        //     printf("%02x ", buf[i]);
-        // }
-        // std::cout << "\nBuffer as int32: " << *(reinterpret_cast<int32_t*>(buf)) << std::endl;
-
-        // Reset buffer state
-        shared_mem_->rx_buffer.has_data = false;
-        shared_mem_->rx_buffer.size = 0;
-
-        pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
-        return copy_len;
-      } else {
-        // file implementation
-        return replay_.read(buf, len);
-      }
-    }
-
-    void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-      // shared memory implementation
-      if (execution_mode == "dpdk") {
-        pthread_mutex_lock(&shared_mem_->tx_buffer.mutex);
-
-        // Copy to shared memory
-        memcpy(shared_mem_->tx_buffer.data, buf, len);
-        shared_mem_->tx_buffer.size = len;
-        shared_mem_->tx_buffer.has_data = true;
-
-        logger_.logRPCToDPDK(buf, len);
-
-        // Signal DPDK
-        sem_post(&shared_mem_->tx_buffer.sem);
-        pthread_mutex_unlock(&shared_mem_->tx_buffer.mutex);
-      } else {
-        // file implementation
-        replay_.write(buf, len);
-      }
-    }
-
+    // Shared Memory Implementation
     // uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
-    //     return replay_.read(buf, len);
+    //     // Wait for data from DPDK
+    //     sem_wait(&shared_mem_->rx_buffer.sem);
+    //     pthread_mutex_lock(&shared_mem_->rx_buffer.mutex);
+
+    //     if (!shared_mem_->rx_buffer.has_data) {
+    //         pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
+    //         return 0;
+    //     }
+
+    //     // Copy data from shared memory
+    //     uint32_t copy_len = std::min(len, (uint32_t)shared_mem_->rx_buffer.size);
+    //     memcpy(buf, shared_mem_->rx_buffer.data, copy_len);
+
+    //     if (copy_len > 0) {
+    //       logger_.logDPDKToRPC(buf, copy_len);
+    //     }
+
+    //     // std::cout << "Shared Memory Read: " << copy_len << " bytes\n";
+    //     // std::cout << "First 32 bytes: ";
+    //     // for(uint32_t i = 0; i < std::min(copy_len, 32u); i++) {
+    //     //     printf("%02x ", buf[i]);
+    //     // }
+    //     // std::cout << "\nBuffer as int32: " << *(reinterpret_cast<int32_t*>(buf)) << std::endl;
+
+    //     // Reset buffer state
+    //     shared_mem_->rx_buffer.has_data = false;
+    //     shared_mem_->rx_buffer.size = 0;
+
+    //     pthread_mutex_unlock(&shared_mem_->rx_buffer.mutex);
+    //     return copy_len;
     // }
-    
+
     // void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
-    //     replay_.write(buf, len);
+    //     pthread_mutex_lock(&shared_mem_->tx_buffer.mutex);
+
+    //     // Copy to shared memory
+    //     memcpy(shared_mem_->tx_buffer.data, buf, len);
+    //     shared_mem_->tx_buffer.size = len;
+    //     shared_mem_->tx_buffer.has_data = true;
+
+    //     logger_.logRPCToDPDK(buf, len);
+
+    //     // Signal DPDK
+    //     sem_post(&shared_mem_->tx_buffer.sem);
+    //     pthread_mutex_unlock(&shared_mem_->tx_buffer.mutex);
     // }
+
+    uint32_t TUDPSocket::read(uint8_t* buf, uint32_t len) {
+        return replay_.read(buf, len);
+    }
+    
+    void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
+        replay_.write(buf, len);
+    }
 
 //  void TUDPSocket::write(const uint8_t* buf, uint32_t len) {
 //    write_partial(buf, len);
@@ -3604,7 +3705,7 @@ namespace thrift {
     static const uint16_t NUM_MBUFS = 8191;
     static const uint16_t MBUF_CACHE_SIZE = 250;
     
-    TServerUDPSocket(int port);
+    TServerUDPSocket(int port, std::vector <uint8_t>& rpcData);
     TServerUDPSocket(int port, int sendTimeout, int recvTimeout);
     ~TServerUDPSocket() override;
 
@@ -3624,10 +3725,12 @@ namespace thrift {
     std::shared_ptr<DPDKResources> getDPDKResources() const {
           return dpdkResources_;
       }
+    
+    std::shared_ptr<TUDPSocket> client;
 
   protected:
     std::shared_ptr<TTransport> acceptImpl() override;
-    virtual std::shared_ptr<TUDPSocket> createSocket(uint16_t portId);
+    // virtual std::shared_ptr<TUDPSocket> createSocket(uint16_t portId);
     
     bool initDPDK();
     bool setupDPDKPort();
@@ -3648,11 +3751,12 @@ namespace thrift {
   };
 
   // ***TServerUDPSocket.cpp***
-  TServerUDPSocket::TServerUDPSocket(int port)
+  TServerUDPSocket::TServerUDPSocket(int port, std::vector <uint8_t>& rpcData)
     : port_(port)
     , isInitialized_(true)
     , sendTimeout_(0)
     , recvTimeout_(0) {
+        client = std::make_shared<TUDPSocket>(rpcData);
   }
 
   TServerUDPSocket::TServerUDPSocket(int port, int sendTimeout, int recvTimeout)
@@ -3674,8 +3778,7 @@ namespace thrift {
           "thrift-server",           // Program name
           "-l", "0-1",              // Use CPU cores 0-1
           "-n", "4",                // Number of memory channels
-          "-a", "0000:81:00.0",	    // Specify Interface
-	  "--proc-type=auto",       // Process type
+          "--proc-type=auto",       // Process type
           "--log-level", "8",       // Debug log level
           NULL
       };
@@ -3737,11 +3840,9 @@ namespace thrift {
     dpdkResources_->portConf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
     dpdkResources_->portConf.txmode.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | 
                                               RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
-	
-    printf("Port %u driver name: %s, if_index: %d\n",
-		           dpdkResources_->portId, dpdkResources_->devInfo.driver_name, dpdkResources_->devInfo.if_index);
+
     // Configure device
-    int ret = 1; //rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
+    int ret = rte_eth_dev_configure(dpdkResources_->portId, 1, 1, &dpdkResources_->portConf);
     if (ret != 0) {
       fprintf(stderr, "Failed to configure port %d (err=%d)\n", dpdkResources_->portId, ret);
       return false;
@@ -3826,7 +3927,7 @@ namespace thrift {
 
     // Create new UDP socket for client communication
     // printf("about to create socket\n");
-    std::shared_ptr<TUDPSocket> client = createSocket(dpdkResources_->portId);
+    // std::shared_ptr<TUDPSocket> client = createSocket(dpdkResources_->portId);
     
     if (sendTimeout_ > 0) {
       client->setSendTimeout(sendTimeout_);
@@ -3838,21 +3939,21 @@ namespace thrift {
     return client;
   }
 
-  std::shared_ptr<TUDPSocket> TServerUDPSocket::createSocket(uint16_t portId) {
-      // Create socket with shared DPDK resources
-      //auto socket = std::make_shared<TUDPSocket>(dpdkResources_);
-      auto socket = std::make_shared<TUDPSocket>();
+  // std::shared_ptr<TUDPSocket> TServerUDPSocket::createSocket(uint16_t portId) {
+  //     // Create socket with shared DPDK resources
+  //     //auto socket = std::make_shared<TUDPSocket>(dpdkResources_);
+  //     auto socket = std::make_shared<TUDPSocket>();
       
-      // Set socket-specific parameters
-      if (sendTimeout_ > 0) {
-          socket->setSendTimeout(sendTimeout_);
-      }
-      if (recvTimeout_ > 0) {
-          socket->setRecvTimeout(recvTimeout_);
-      }
+  //     // Set socket-specific parameters
+  //     if (sendTimeout_ > 0) {
+  //         socket->setSendTimeout(sendTimeout_);
+  //     }
+  //     if (recvTimeout_ > 0) {
+  //         socket->setRecvTimeout(recvTimeout_);
+  //     }
       
-      return socket;
-  }
+  //     return socket;
+  // }
   void TServerUDPSocket::interrupt() {
     concurrency::Guard g(mutex_);
     if (dpdkResources_->isInitialized) {
@@ -7829,8 +7930,8 @@ public:
       event_thread.detach();
 
       // Allocate aligned buffers
-      raw_recv_buf_ = new uint8_t[BUFFER_SIZE + 0x10];  // Extra space for alignment
-      raw_resp_buf_ = new uint8_t[BUFFER_SIZE + 0x10];
+      raw_recv_buf_ = new uint8_t[BUFFER_SIZE + 0x40];  // Extra space for alignment
+      raw_resp_buf_ = new uint8_t[BUFFER_SIZE + 0x40];
 
       recv_buf_ = allocateAlignedBuffer(raw_recv_buf_);
       resp_buf_ = allocateAlignedBuffer(raw_resp_buf_);
@@ -7849,10 +7950,10 @@ public:
    uint8_t* allocateAlignedBuffer(uint8_t* raw_buf) {
        // Find next address ending in 0
        uintptr_t addr = reinterpret_cast<uintptr_t>(raw_buf);
-       uintptr_t aligned_addr = (addr + 0xF) & ~0xF;
-       while((aligned_addr & 0xF) != 0x0) {
-           aligned_addr += 0x10;
-       }
+       uintptr_t aligned_addr = (addr + 0x3F) & ~0x3F;
+      //  while((aligned_addr & 0xF) != 0x0) {
+      //      aligned_addr += 0x10;
+      //  }
 
        printf("Original address: 0x%lx\n", addr);
        printf("Aligned address: 0x%lx\n", aligned_addr);
@@ -7908,11 +8009,11 @@ public:
    bool handleGet(const std::vector<int8_t>& key, std::vector<int8_t>& value) {
       // Convert key to string for memcached API
       std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
-      // printf("GET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
+//       printf("GET attempt with key size: %zu, key content: ", key.size());
+//       for(size_t i = 0; i < key.size(); i++) {
+//           printf("%02x ", key[i]);
+//       }
+//       printf("\n");
 
       // Get the item directly from cache
       item* it = item_get(key_str.c_str(), key_str.length(), &thread, true);
@@ -7926,11 +8027,11 @@ public:
           value.assign(reinterpret_cast<const int8_t*>(value_ptr),
                       reinterpret_cast<const int8_t*>(value_ptr + value_len));
           
-          // printf("GET attempt with value size: %zu, Value content: ", value.size());
-          // for(size_t i = 0; i < value.size(); i++) {
-          //     printf("%02x ", value[i]);
-          // }
-          // printf("\n"); 
+//           printf("GET attempt with value size: %zu, Value content: ", value.size());
+//           for(size_t i = 0; i < value.size(); i++) {
+//               printf("%02x ", value[i]);
+//           }
+//           printf("\n"); 
 
           // Release our reference
           item_remove(it);
@@ -7946,17 +8047,17 @@ public:
       // Convert key and value to strings for memcached API
       std::string key_str(reinterpret_cast<const char*>(key.data()), key.size());
       std::string value_str(reinterpret_cast<const char*>(value.data()), value.size());
-      // printf("SET attempt with key size: %zu, key content: ", key.size());
-      // for(size_t i = 0; i < key.size(); i++) {
-      //     printf("%02x ", key[i]);
-      // }
-      // printf("\n");
-
-      // printf("SET attempt with value size: %zu, value content: ", value.size());
-      // for(size_t i = 0; i < value.size(); i++) {
-      //     printf("%02x ", value[i]);
-      // }
-      // printf("\n");
+//       printf("SET attempt with key size: %zu, key content: ", key.size());
+//       for(size_t i = 0; i < key.size(); i++) {
+//           printf("%02x ", key[i]);
+//       }
+//       printf("\n");
+//
+//       printf("SET attempt with value size: %zu, value content: ", value.size());
+//       for(size_t i = 0; i < value.size(); i++) {
+//           printf("%02x ", value[i]);
+//       }
+//       printf("\n");
       
       // Allocate new item
       item* it = item_alloc(key_str.c_str(), key_str.length(), 0, 0, value.size());
@@ -9452,40 +9553,51 @@ bool MemcachedServiceConcurrentClient::recv_setRequest(const int32_t seqid)
 
 int main(int argc, char **argv) {
 
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <filename>" << std::endl;
+        return 1;
+    }
+
     // MemcachedBusinessLogic logic;
     // PacketReplayer::replayToMemcached("rpc_to_logic.log", logic);
     // return 0;
 
-    // Default mode
-    execution_mode = "file";
+    // auto& logger = PacketLogger::getInstance();
+    // logger.initializeLogFiles(".");
 
-    // Parse command-line arguments
-    for (int i = 1; i < argc; ++i) {
-      std::string arg = argv[i];
-      if (arg.find("--mode=") == 0)
-        execution_mode = arg.substr(7);
-    }
+    // Initialize DPDK first
+    // auto& dpdk = DPDKHandler::getInstance();
+    // if (!dpdk.init(0)) {
+    //     std::cerr << "Failed to initialize DPDK" << std::endl;
+    //     return 1;
+    // }
 
-    if (execution_mode != "dpdk" && execution_mode != "file") {
-        std::cerr << "Invalid mode: " << execution_mode << ". Use --mode=dpdk or --mode=file." << std::endl;
+    // Start DPDK polling
+    // dpdk.startPolling();
+
+    // Load the RPC Data into memory 
+    std::string filename = argv[1];
+    std::vector<uint8_t> rpcData;
+
+    // Open the file in binary mode
+    std::ifstream file(filename, std::ios::binary);
+    if(!file.is_open()) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
         return 1;
     }
 
-    std::cout << "Running in " << execution_mode << " mode" << std::endl;
+    // Get file size
+    file.seekg(0, std::ios::end);
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
 
-    if (execution_mode == "dpdk") {
-      auto& logger = PacketLogger::getInstance();
-      logger.initializeLogFiles(".");
+    // Reserve space in the vector
+    rpcData.resize(fileSize);
 
-      // Initialize DPDK first
-      auto& dpdk = DPDKHandler::getInstance();
-      if (!dpdk.init(0)) {
-          std::cerr << "Failed to initialize DPDK" << std::endl;
-          return 1;
-      }
-
-      // Start DPDK polling
-      dpdk.startPolling();
+    // Read the file
+    if(!file.read(reinterpret_cast<char*>(rpcData.data()), fileSize)) {
+        std::cerr << "Failed to read file: " << filename << std::endl;
+        return 1;
     }
 
     using namespace thrift_memcached;
@@ -9508,7 +9620,7 @@ int main(int argc, char **argv) {
     
     //::std::shared_ptr<MemcachedServiceHandler> handler(new MemcachedServiceHandler());
     ::std::shared_ptr<TProcessor> processor(new MemcachedServiceProcessor(handler));
-    ::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port));
+    ::std::shared_ptr<TServerTransport> serverTransport(new TServerUDPSocket(port, rpcData));
     ::std::shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     ::std::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
 

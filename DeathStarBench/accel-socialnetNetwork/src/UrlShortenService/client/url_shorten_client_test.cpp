@@ -7,6 +7,7 @@
 #include <random>
 #include <mutex>
 #include <algorithm>
+#include <cstdio>
 
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TSocket.h>
@@ -54,6 +55,23 @@ struct TestMetrics {
 
 TestMetrics global_metrics;
 
+// Global operation weights
+float global_compose_weight = 0.5f;
+float global_get_extended_weight = 0.5f;
+static constexpr int kComposeUrlCount = 3;
+static constexpr int kGetExtendedUrlCount = 3;
+
+// Generate fixed-length expanded URLs (64 chars) for ComposeUrls requests.
+std::string createFixedExpandedUrl(int64_t id) {
+    char expanded_buf[65];
+    std::snprintf(expanded_buf, sizeof(expanded_buf),
+                  "https://example.com/fixed_url/%020lld",
+                  static_cast<long long>(id));
+    std::string expanded_str(expanded_buf);
+    expanded_str.resize(64, ' ');
+    return expanded_str;
+}
+
 void client_thread(int thread_id, const std::string& server_host, int server_port,
                    int operations_per_thread, int warmup_operations, bool verbose) {
     try {
@@ -70,7 +88,6 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<> url_count_dist(1, 5);
         std::uniform_real_distribution<float> operation_dist(0.0f, 1.0f);
         
         std::vector<std::string> shortened_urls;
@@ -78,14 +95,14 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         // Warmup phase - compose URLs
         for (int i = 0; i < warmup_operations; i++) {
             std::map<std::string, std::string> carrier;
-            carrier["trace-id"] = "warmup-0000";
+            carrier["trace-id"] = "test-0000-0000";
             carrier["span-id"] = "00";
             
             try {
                 std::vector<std::string> urls;
-                int url_count = url_count_dist(gen);
-                for (int j = 0; j < url_count; j++) {
-                    urls.push_back("https://example.com/page" + std::to_string(thread_id * 1000 + i * 10 + j));
+                for (int j = 0; j < kComposeUrlCount; j++) {
+                    int64_t url_id = static_cast<int64_t>(thread_id) * 1000 + i * 10 + j;
+                    urls.push_back(createFixedExpandedUrl(url_id));
                 }
                 
                 std::vector<Url> result;
@@ -115,7 +132,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             carrier["span-id"] = "00";
             
             float op_rand = operation_dist(gen);
-            bool compose_op = (op_rand < 0.5f) || shortened_urls.empty();
+            bool compose_op = (op_rand < global_compose_weight) || shortened_urls.empty();
             
             auto start_time = std::chrono::high_resolution_clock::now();
             
@@ -123,9 +140,9 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                 if (compose_op) {
                     // ComposeUrls operation
                     std::vector<std::string> urls;
-                    int url_count = url_count_dist(gen);
-                    for (int j = 0; j < url_count; j++) {
-                        urls.push_back("https://example.com/test" + std::to_string(thread_id * 100000 + i * 10 + j));
+                    for (int j = 0; j < kComposeUrlCount; j++) {
+                        int64_t url_id = static_cast<int64_t>(thread_id) * 100000 + i * 10 + j;
+                        urls.push_back(createFixedExpandedUrl(url_id));
                     }
                     
                     std::vector<Url> result;
@@ -138,20 +155,26 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                     global_metrics.compose_operations++;
                     
                     if (verbose && i % 100 == 0) {
-                        std::cout << "Thread " << thread_id << " composed " << url_count << " URLs" << std::endl;
+                        std::cout << "Thread " << thread_id << " composed " << kComposeUrlCount << " URLs" << std::endl;
                     }
                 } else {
                     // GetExtendedUrls operation
-                    int count = std::min(3, (int)shortened_urls.size());
                     std::vector<std::string> query_urls;
-                    
+
                     std::set<int> indices;
-                    while (indices.size() < (size_t)count) {
+                    while (indices.size() < (size_t)kGetExtendedUrlCount && !shortened_urls.empty()) {
                         indices.insert(gen() % shortened_urls.size());
                     }
-                    
+
                     for (int idx : indices) {
                         query_urls.push_back(shortened_urls[idx]);
+                    }
+
+                    // Keep request size constant even if warmup produced too few unique URLs.
+                    while ((int)query_urls.size() < kGetExtendedUrlCount) {
+                        if (!shortened_urls.empty()) {
+                            query_urls.push_back(shortened_urls[0]);
+                        }
                     }
                     
                     std::vector<std::string> result;
@@ -250,6 +273,8 @@ void print_usage(const char* program_name) {
     std::cout << "  -t, --threads <num>     Number of client threads (default: 4)" << std::endl;
     std::cout << "  -o, --operations <num>  Operations per thread (default: 500)" << std::endl;
     std::cout << "  -w, --warmup <num>      Warmup operations per thread (default: 50)" << std::endl;
+    std::cout << "  -cw, --compose-weight <weight>       ComposeUrls operation weight (default: 0.5)" << std::endl;
+    std::cout << "  -gw, --get-extended-weight <weight>  GetExtendedUrls operation weight (default: 0.5)" << std::endl;
     std::cout << "  -v, --verbose           Verbose output" << std::endl;
     std::cout << "  --help                  Show this help message" << std::endl;
 }
@@ -261,6 +286,8 @@ int main(int argc, char* argv[]) {
     int operations_per_thread = 500;
     int warmup_operations = 50;
     bool verbose = false;
+    float compose_weight = 0.5f;
+    float get_extended_weight = 0.5f;
     
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -276,17 +303,36 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) warmup_operations = std::stoi(argv[++i]);
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } else if (arg == "-cw" || arg == "--compose-weight") {
+            if (i + 1 < argc) compose_weight = std::stof(argv[++i]);
+        } else if (arg == "-gw" || arg == "--get-extended-weight") {
+            if (i + 1 < argc) get_extended_weight = std::stof(argv[++i]);
         } else if (arg == "--help") {
             print_usage(argv[0]);
             return 0;
         }
     }
+
+    // Normalize weights
+    float total_weight = compose_weight + get_extended_weight;
+    if (total_weight <= 0.0f) {
+        compose_weight = 0.5f;
+        get_extended_weight = 0.5f;
+        total_weight = 1.0f;
+    }
+    compose_weight /= total_weight;
+    get_extended_weight /= total_weight;
+
+    global_compose_weight = compose_weight;
+    global_get_extended_weight = get_extended_weight;
     
     std::cout << "=== UrlShorten Service Client Test ===" << std::endl;
     std::cout << "Server: " << server_host << ":" << server_port << std::endl;
     std::cout << "Threads: " << num_threads << std::endl;
     std::cout << "Operations per thread: " << operations_per_thread << std::endl;
     std::cout << "Warmup operations per thread: " << warmup_operations << std::endl;
+    std::cout << "Operation weights (Compose/GetExtended): "
+              << global_compose_weight << "/" << global_get_extended_weight << std::endl;
     std::cout << std::endl;
     
     std::vector<std::thread> threads;

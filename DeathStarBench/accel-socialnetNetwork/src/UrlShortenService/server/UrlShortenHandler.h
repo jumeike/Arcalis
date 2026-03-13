@@ -14,7 +14,11 @@
 
 namespace social_network {
 
+#ifdef ENABLE_GEM5
+class UrlShortenHandler : public social_network::UrlShortenServiceIf {
+#else
 class UrlShortenHandler : public UrlShortenServiceIf {
+#endif
 public:
   UrlShortenHandler();
   ~UrlShortenHandler() override = default;
@@ -38,8 +42,28 @@ public:
   void GetRpcMetrics(std::map<std::string, int64_t>& metrics) const;
   void GetBusinessMetrics(std::map<std::string, int64_t>& metrics) const;
 
-private:
+  int64_t req_id_;
+  void setReqId(int64_t req_id) { req_id_ = req_id; }
+
+#ifdef ENABLE_GEM5
+  void setRecvBuffer(uint8_t* buf);
+  bool isReadyForRequest() const { return ready_for_request_; }
+
+  // Results for different operations
+  std::vector<Url> current_target_urls_;
+  std::vector<std::string> current_extended_urls_;
+  bool success_;
+  int operation_type_; // 0=ComposeUrls, 1=GetExtendedUrls
+#endif // ENABLE_GEM5
+
   UrlShortenBusinessLogic* business_logic_{nullptr};
+
+private:
+
+#ifdef ENABLE_GEM5
+  bool ready_for_request_{false};
+  uint8_t* recv_buffer_;  // Points to business logic's buffer
+#endif // ENABLE_GEM5
 
   // RPC layer metrics
   mutable std::mutex _metrics_mutex;

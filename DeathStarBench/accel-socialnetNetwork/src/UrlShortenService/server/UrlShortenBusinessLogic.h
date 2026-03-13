@@ -8,6 +8,7 @@
 #include <vector>
 #include <atomic>
 #include <map>
+#include <memory>
 
 #include <mongoc.h>
 #include <libmemcached/memcached.h>
@@ -19,18 +20,49 @@
 
 #define HOSTNAME "http://short-url/"
 
+#ifdef ENABLE_CEREBELLUM
+#define cmd_send_dpdk_buf    0
+#define cmd_send_dpdk_len    1
+#define cmd_set_app_flag     2
+#define cmd_send_app_resp    3
+#define cmd_send_app_buf     4
+#define cmd_set_dpdk_flag    5
+#endif // ENABLE_CEREBELLUM
+
+#ifdef ENABLE_TRACING
+#include "PacketLogger.h"
+#endif
+
+#ifdef ENABLE_GEM5
+#include "../../../gen-cpp/UrlShortenService.h"
+#include <thrift/TDispatchProcessor.h>
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/transport/TSocket.h>
+#include "PacketReplaySocket.h"
+#endif // ENABLE_GEM5
+
 namespace social_network {
+
+class UrlShortenHandler;
 
 class UrlShortenBusinessLogic {
 public:
   UrlShortenBusinessLogic(memcached_pool_st* memcached_pool, 
                           mongoc_client_pool_t* mongodb_pool);
+#ifdef ENABLE_GEM5
+  ~UrlShortenBusinessLogic();
+#else
   ~UrlShortenBusinessLogic() = default;
+#endif // ENABLE_GEM5
 
   // Core business logic functions
   void ComposeUrls(std::vector<Url>& _return,
                    int64_t req_id,
                    const std::vector<std::string>& urls);
+#ifdef ENABLE_GEM5
+  void ComposeUrls();      // Buffer-based version for GEM5/accelerator path
+  void GetExtendedUrls();  // Buffer-based version for GEM5/accelerator path
+#endif // ENABLE_GEM5
 
   void GetExtendedUrls(std::vector<std::string>& _return,
                        int64_t req_id,
@@ -39,6 +71,15 @@ public:
   // Metrics and monitoring
   void GetMetrics(std::map<std::string, int64_t>& metrics) const;
   void ResetMetrics();
+
+#ifdef ENABLE_GEM5
+  uint8_t* getRecvBuffer() const { return recv_buf_; }
+  uint8_t* getRespBuffer() const { return resp_buf_; }
+  size_t getBufferSize() const { return BUFFER_SIZE; }
+
+  void setHandler(UrlShortenHandler* handler) { handler_ = handler; }
+  void setTraceConfig(const std::string& file, int requests);
+#endif // ENABLE_GEM5
 
 private:
   memcached_pool_st* _memcached_client_pool;
@@ -64,6 +105,137 @@ private:
                                std::vector<std::string>& cache_misses);
   void _FetchUrlsFromMongo(std::vector<std::string>& _return,
                            const std::vector<std::string>& shortened_urls);
+
+#ifdef ENABLE_GEM5
+  UrlShortenHandler* handler_{nullptr};
+  static constexpr size_t BUFFER_SIZE = 64 * 1024;
+  static constexpr size_t ALIGNMENT = 0x40;
+
+  uint8_t* raw_recv_buf_{nullptr};
+  uint8_t* raw_resp_buf_{nullptr};
+  uint8_t* recv_buf_{nullptr};
+  uint8_t* resp_buf_{nullptr};
+  size_t resp_buf_offset_{0};
+  size_t resp_buf_size_{0};
+
+  uint8_t* allocateAlignedBuffer(uint8_t* raw_buf);
+  bool initializeBuffers();
+  void cleanupBuffers();
+
+  std::string trace_file_;
+  int num_requests_{0};
+
+  apache::thrift::transport::TSocket* getSocketFromTransport();
+  bool checkReplayEOF() {
+    auto socket = getSocketFromTransport();
+    return socket ? socket->isReplayEOF() : false;
+  }
+  bool validateReplay() {
+    auto socket = getSocketFromTransport();
+    return socket ? socket->getReplaySocket().validateReplay("urlshorten_traces/rpc_to_dpdk.bin") : false;
+  }
+#endif // ENABLE_GEM5
+
+public:
+#ifdef ENABLE_GEM5
+  // SW path members
+  std::string fname_;
+  int32_t seqid_{0};
+  void* ctx_{nullptr};
+  apache::thrift::TDispatchProcessor* processor_{nullptr};
+  std::shared_ptr<::apache::thrift::protocol::TProtocol> in_;
+  std::shared_ptr<::apache::thrift::protocol::TProtocol> out_;
+  void* connectionContext_{nullptr};
+  size_t read_pos_{0};
+  size_t write_pos_{0};
+
+  // Args/result structs for each operation
+  UrlShortenService_ComposeUrls_args compose_args_;
+  UrlShortenService_ComposeUrls_result compose_result_;
+  UrlShortenService_GetExtendedUrls_args get_args_;
+  UrlShortenService_GetExtendedUrls_result get_result_;
+
+  // SW path methods
+  void callSWread();
+  bool callSWdispatch();
+  void callSWwrite();
+  void callSWsendresp(bool success);
+  void callSWSendBuf();
+  void runLoop(apache::thrift::TDispatchProcessor* processor,
+               std::shared_ptr<::apache::thrift::protocol::TProtocol> in,
+               std::shared_ptr<::apache::thrift::protocol::TProtocol> out,
+               void* connectionContext);
+
+  // Response serialization helpers shared by SW and Cerebellum paths.
+  void serializeComposeUrlsResponse(const std::vector<Url>& urls);
+  void serializeExtendedUrlsResponse(const std::vector<std::string>& extended_urls);
+
+  // Helper functions for buffer deserialization
+  int32_t readInt32(uint8_t* buf, size_t& offset) {
+    int32_t value = *reinterpret_cast<int32_t*>(buf + offset);
+    offset += 4;
+    return value;
+  }
+
+  int64_t readInt64(uint8_t* buf, size_t& offset) {
+    int64_t value = *reinterpret_cast<int64_t*>(buf + offset);
+    offset += 8;
+    return value;
+  }
+
+  std::string readString(uint8_t* buf, size_t& offset) {
+    int32_t length = readInt32(buf, offset);
+    std::string str(reinterpret_cast<char*>(buf + offset), length);
+    offset += length;
+    return str;
+  }
+
+  void writeInt32ToBuffer(uint8_t* buf, size_t& offset, int32_t value) {
+      *reinterpret_cast<int32_t*>(buf + offset) = value;
+      offset += 4;
+  }
+
+  void writeInt64ToBuffer(uint8_t* buf, size_t& offset, int64_t value) {
+      *reinterpret_cast<int64_t*>(buf + offset) = value;
+      offset += 8;
+  }
+
+  void writeStringToBuffer(uint8_t* buf, size_t& offset, const std::string& str) {
+      // Write length then data
+      writeInt32ToBuffer(buf, offset, static_cast<int32_t>(str.size()));
+      memcpy(buf + offset, str.data(), str.size());
+      offset += str.size();
+  }
+
+    void writeUrlToBuffer(uint8_t* buf, size_t& offset, const Url& url) {
+      writeStringToBuffer(buf, offset, url.shortened_url);
+      writeStringToBuffer(buf, offset, url.expanded_url);
+    }
+
+    Url readUrlFromBuffer(uint8_t* buf, size_t& offset) {
+      Url url;
+      url.shortened_url = readString(buf, offset);
+      url.expanded_url = readString(buf, offset);
+      return url;
+    }
+#endif // ENABLE_GEM5
+
+#ifdef ENABLE_CEREBELLUM
+  // HW accelerator path members
+  volatile uint64_t* readAddress{nullptr};
+  volatile uint64_t* sendAddress{nullptr};
+
+  // HW accelerator path methods
+  void callEngineRead();
+  bool callEngineDispatch();
+  void callEngineWrite();
+  void callEngineSendresp(bool success);
+  void callEngineSendBuf();
+  void setAddresses(volatile uint64_t* sAddress, volatile uint64_t* rAddress) {
+    sendAddress = sAddress;
+    readAddress = rAddress;
+  }
+#endif // ENABLE_CEREBELLUM
 };
 
 } // namespace social_network

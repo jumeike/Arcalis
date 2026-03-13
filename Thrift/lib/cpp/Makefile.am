@@ -237,8 +237,8 @@ include_transport_HEADERS = \
                          src/thrift/transport/THttpClient.h \
                          src/thrift/transport/THttpServer.h \
                          src/thrift/transport/TSocket.h \
-                         src/thrift/transport/PacketLogger.h \
                          src/thrift/transport/PacketReplaySocket.h \
+                         src/thrift/transport/PacketLogger.h \
                          src/thrift/transport/TUDPSocket.h \
                          src/thrift/transport/DPDKResources.h \
                          src/thrift/transport/TSocketUtils.h \

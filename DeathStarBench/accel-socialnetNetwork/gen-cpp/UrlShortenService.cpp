@@ -6,6 +6,11 @@
  */
 #include "UrlShortenService.h"
 
+#ifdef ENABLE_GEM5
+#include "../src/OptUrlShortenService/server/UrlShortenHandler.h"
+//#include "../src/UrlShortenService/server/UrlShortenHandler.h"
+#endif
+
 namespace social_network {
 
 
@@ -190,6 +195,20 @@ UrlShortenService_ComposeUrls_result::~UrlShortenService_ComposeUrls_result() no
 UrlShortenService_ComposeUrls_result::UrlShortenService_ComposeUrls_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+// ComposeUrls
+UrlShortenService_ComposeUrls_result::UrlShortenService_ComposeUrls_result(const UrlShortenService_ComposeUrls_result& other)
+    : success(other.success), se(other.se), __isset(other.__isset) {}
+
+UrlShortenService_ComposeUrls_result& UrlShortenService_ComposeUrls_result::operator=(const UrlShortenService_ComposeUrls_result& other) {
+    if (this != &other) {
+        success = other.success;
+        se = other.se;
+        __isset = other.__isset;
+    }
+    return *this;
+}
+#endif
 uint32_t UrlShortenService_ComposeUrls_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -527,6 +546,20 @@ UrlShortenService_GetExtendedUrls_result::~UrlShortenService_GetExtendedUrls_res
 UrlShortenService_GetExtendedUrls_result::UrlShortenService_GetExtendedUrls_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+// GetExtendedUrls
+UrlShortenService_GetExtendedUrls_result::UrlShortenService_GetExtendedUrls_result(const UrlShortenService_GetExtendedUrls_result& other)
+    : success(other.success), se(other.se), __isset(other.__isset) {}
+
+UrlShortenService_GetExtendedUrls_result& UrlShortenService_GetExtendedUrls_result::operator=(const UrlShortenService_GetExtendedUrls_result& other) {
+    if (this != &other) {
+        success = other.success;
+        se = other.se;
+        __isset = other.__isset;
+    }
+    return *this;
+}
+#endif
 uint32_t UrlShortenService_GetExtendedUrls_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -827,6 +860,84 @@ bool UrlShortenServiceProcessor::dispatchCall(::apache::thrift::protocol::TProto
   return true;
 }
 
+#ifdef ENABLE_GEM5
+bool UrlShortenServiceProcessor::process(
+   std::shared_ptr<apache::thrift::protocol::TProtocol> in,
+   std::shared_ptr<apache::thrift::protocol::TProtocol> out,
+   void* connectionContext) {
+   auto& bl = std::dynamic_pointer_cast<UrlShortenHandler>(iface_)->business_logic_;
+   bl->runLoop(this, in, out, connectionContext);
+   return true;
+}
+
+void UrlShortenServiceProcessor::process_ComposeUrls(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+{
+   void* ctx = nullptr;
+   if (this->eventHandler_.get() != nullptr) {
+       ctx = this->eventHandler_->getContext("UrlShortenService.ComposeUrls", callContext);
+   }
+   ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "UrlShortenService.ComposeUrls");
+
+   auto& bl = std::dynamic_pointer_cast<UrlShortenHandler>(iface_)->business_logic_;
+   bl->ctx_ = ctx;
+
+   UrlShortenService_ComposeUrls_result result;
+   try {
+       iface_->ComposeUrls(result.success, bl->compose_args_.req_id, bl->compose_args_.urls, bl->compose_args_.carrier);
+       result.__isset.success = true;
+   } catch (ServiceException &se) {
+       result.se = se;
+       result.__isset.se = true;
+   } catch (const std::exception& e) {
+       if (this->eventHandler_.get() != nullptr) {
+           this->eventHandler_->handlerError(ctx, "UrlShortenService.ComposeUrls");
+       }
+       ::apache::thrift::TApplicationException x(e.what());
+       oprot->writeMessageBegin("ComposeUrls", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+       x.write(oprot);
+       oprot->writeMessageEnd();
+       oprot->getTransport()->writeEnd();
+       oprot->getTransport()->flush();
+       return;
+   }
+
+   bl->compose_result_ = result;
+}
+
+void UrlShortenServiceProcessor::process_GetExtendedUrls(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+{
+   void* ctx = nullptr;
+   if (this->eventHandler_.get() != nullptr) {
+       ctx = this->eventHandler_->getContext("UrlShortenService.GetExtendedUrls", callContext);
+   }
+   ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "UrlShortenService.GetExtendedUrls");
+
+   auto& bl = std::dynamic_pointer_cast<UrlShortenHandler>(iface_)->business_logic_;
+   bl->ctx_ = ctx;
+
+   UrlShortenService_GetExtendedUrls_result result;
+   try {
+       iface_->GetExtendedUrls(result.success, bl->get_args_.req_id, bl->get_args_.shortened_urls, bl->get_args_.carrier);
+       result.__isset.success = true;
+   } catch (ServiceException &se) {
+       result.se = se;
+       result.__isset.se = true;
+   } catch (const std::exception& e) {
+       if (this->eventHandler_.get() != nullptr) {
+           this->eventHandler_->handlerError(ctx, "UrlShortenService.GetExtendedUrls");
+       }
+       ::apache::thrift::TApplicationException x(e.what());
+       oprot->writeMessageBegin("GetExtendedUrls", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+       x.write(oprot);
+       oprot->writeMessageEnd();
+       oprot->getTransport()->writeEnd();
+       oprot->getTransport()->flush();
+       return;
+   }
+
+   bl->get_result_ = result;
+}
+#else
 void UrlShortenServiceProcessor::process_ComposeUrls(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = nullptr;
@@ -940,6 +1051,7 @@ void UrlShortenServiceProcessor::process_GetExtendedUrls(int32_t seqid, ::apache
     this->eventHandler_->postWrite(ctx, "UrlShortenService.GetExtendedUrls", bytes);
   }
 }
+#endif
 
 ::std::shared_ptr< ::apache::thrift::TProcessor > UrlShortenServiceProcessorFactory::getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) {
   ::apache::thrift::ReleaseHandler< UrlShortenServiceIfFactory > cleanup(handlerFactory_);

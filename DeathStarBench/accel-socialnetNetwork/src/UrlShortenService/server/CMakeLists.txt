@@ -3,7 +3,13 @@ project(UrlShortenService)
 
 # Debug build type
 set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_CEREBELLUM -DENABLE_GEM5")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING")
 
 find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(nlohmann_json REQUIRED)
@@ -24,8 +30,9 @@ add_executable(
 
 target_include_directories(
     UrlShortenService PRIVATE
-    ${MONGOC_INCLUDE_DIRS}
-    ${LIBMEMCACHED_INCLUDE_DIRS}
+    ${LIBMEMCACHED_INCLUDE_DIR}
+    /usr/include/libmongoc-1.0
+    /usr/include/libbson-1.0
     .
 )
 
@@ -33,12 +40,12 @@ target_link_directories(UrlShortenService PRIVATE /usr/local/lib)
 
 target_link_libraries(
     UrlShortenService
-    nlohmann_json
-    ${THRIFT_LIBRARIES}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${Boost_LIBRARIES}
+    ${LIBMEMCACHED_LIBRARIES}
+    ${MONGOC_LIBRARIES}
+    thrift
+    pthread
     Boost::log
     Boost::log_setup
-    ${MONGOC_LIBRARIES}
-    ${LIBMEMCACHED_LIBRARIES}
 )
+
+install(TARGETS UrlShortenService DESTINATION ./)

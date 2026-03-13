@@ -1,5 +1,7 @@
 #include "UrlShortenBusinessLogic.h"
+#include "UrlShortenHandler.h"
 #include <future>
+#include <cstring>
 
 namespace social_network {
 
@@ -15,7 +17,477 @@ UrlShortenBusinessLogic::UrlShortenBusinessLogic(
       _mongodb_client_pool(mongodb_pool),
       _distribution(0, 61) {
   LOG(info) << "UrlShortenBusinessLogic initialized";
+
+#ifdef ENABLE_GEM5
+  if (!initializeBuffers()) {
+    LOG(error) << "Failed to initialize UrlShorten GEM5 buffers";
+  }
+#endif // ENABLE_GEM5
 }
+
+#ifdef ENABLE_GEM5
+UrlShortenBusinessLogic::~UrlShortenBusinessLogic() {
+  cleanupBuffers();
+}
+
+bool UrlShortenBusinessLogic::initializeBuffers() {
+  try {
+    raw_recv_buf_ = new uint8_t[BUFFER_SIZE + ALIGNMENT];
+    raw_resp_buf_ = new uint8_t[BUFFER_SIZE + ALIGNMENT];
+    recv_buf_ = allocateAlignedBuffer(raw_recv_buf_);
+    resp_buf_ = allocateAlignedBuffer(raw_resp_buf_);
+
+    std::memset(recv_buf_, 0, BUFFER_SIZE);
+    std::memset(resp_buf_, 0, BUFFER_SIZE);
+
+    LOG(info) << "UrlShorten buffers initialized - recv: " << std::hex
+              << reinterpret_cast<uintptr_t>(recv_buf_);
+    LOG(info) << "UrlShorten buffers initialized - resp: " << std::hex
+              << reinterpret_cast<uintptr_t>(resp_buf_);
+    return true;
+  } catch (const std::exception& e) {
+    LOG(error) << "UrlShorten buffer initialization failed: " << e.what();
+    cleanupBuffers();
+    return false;
+  }
+}
+
+void UrlShortenBusinessLogic::cleanupBuffers() {
+  if (raw_recv_buf_) {
+    delete[] raw_recv_buf_;
+    raw_recv_buf_ = nullptr;
+    recv_buf_ = nullptr;
+  }
+  if (raw_resp_buf_) {
+    delete[] raw_resp_buf_;
+    raw_resp_buf_ = nullptr;
+    resp_buf_ = nullptr;
+  }
+}
+
+uint8_t* UrlShortenBusinessLogic::allocateAlignedBuffer(uint8_t* raw_buf) {
+  uintptr_t addr = reinterpret_cast<uintptr_t>(raw_buf);
+  uintptr_t aligned_addr = (addr + 0x3F) & ~0x3F;
+  return reinterpret_cast<uint8_t*>(aligned_addr);
+}
+
+void UrlShortenBusinessLogic::setTraceConfig(const std::string& file, int requests) {
+  trace_file_ = file;
+  num_requests_ = requests;
+
+  auto socket = getSocketFromTransport();
+  if (socket) {
+    socket->getReplaySocket().loadTrace(trace_file_, num_requests_);
+  }
+}
+
+apache::thrift::transport::TSocket* UrlShortenBusinessLogic::getSocketFromTransport() {
+  auto buffered = dynamic_cast<apache::thrift::transport::TBufferedTransport*>(
+      in_->getTransport().get());
+  return buffered ? dynamic_cast<apache::thrift::transport::TSocket*>(
+                        buffered->getUnderlyingTransport().get())
+                  : nullptr;
+}
+
+void UrlShortenBusinessLogic::callSWread() {
+  std::string fname;
+  ::apache::thrift::protocol::TMessageType mtype;
+  int32_t seqid;
+  in_->readMessageBegin(fname, mtype, seqid);
+  if (mtype != ::apache::thrift::protocol::T_CALL && mtype != ::apache::thrift::protocol::T_ONEWAY) {
+    ::apache::thrift::GlobalOutput.printf("received invalid message type %d from client", mtype);
+    return;
+  }
+  fname_ = fname;
+  seqid_ = seqid;
+
+  if (processor_->getEventHandler().get() != NULL) {
+    std::string service_method = "UrlShortenService." + fname;
+    processor_->getEventHandler()->preRead(ctx_, service_method.c_str());
+  }
+
+  if (fname == "ComposeUrls") {
+    compose_args_.read(in_.get());
+  } else if (fname == "GetExtendedUrls") {
+    get_args_.read(in_.get());
+  }
+
+  in_->readMessageEnd();
+  uint32_t bytes = in_->getTransport()->readEnd();
+  if (processor_->getEventHandler().get() != NULL) {
+    std::string service_method = "UrlShortenService." + fname;
+    processor_->getEventHandler()->postRead(ctx_, service_method.c_str(), bytes);
+  }
+
+#ifdef ENABLE_TRACING
+  if (fname == "ComposeUrls") {
+    LOG_RPC_TO_APP(compose_args_);
+  } else if (fname == "GetExtendedUrls") {
+    LOG_RPC_TO_APP(get_args_);
+  }
+#endif
+}
+
+bool UrlShortenBusinessLogic::callSWdispatch() {
+  return processor_->dispatchCall(in_.get(), out_.get(), fname_, seqid_, connectionContext_);
+}
+
+void UrlShortenBusinessLogic::callSWwrite() {
+#ifdef ENABLE_TRACING
+  if (fname_ == "ComposeUrls") {
+    LOG_APP_TO_RPC(compose_args_.req_id, compose_result_);
+  } else if (fname_ == "GetExtendedUrls") {
+    LOG_APP_TO_RPC(get_args_.req_id, get_result_);
+  }
+#endif
+
+  if (processor_->getEventHandler().get() != NULL) {
+    std::string service_method = "UrlShortenService." + fname_;
+    processor_->getEventHandler()->preWrite(ctx_, service_method.c_str());
+  }
+
+  out_->writeMessageBegin(fname_, ::apache::thrift::protocol::T_REPLY, seqid_);
+
+  if (fname_ == "ComposeUrls") {
+    compose_result_.write(out_.get());
+  } else if (fname_ == "GetExtendedUrls") {
+    get_result_.write(out_.get());
+  }
+
+  out_->writeMessageEnd();
+  uint32_t bytes = out_->getTransport()->writeEnd();
+  out_->getTransport()->flush();
+  if (processor_->getEventHandler().get() != NULL) {
+    std::string service_method = "UrlShortenService." + fname_;
+    processor_->getEventHandler()->postWrite(ctx_, service_method.c_str(), bytes);
+  }
+}
+
+void UrlShortenBusinessLogic::callSWsendresp(bool success) {
+  handler_->success_ = success;
+}
+
+void UrlShortenBusinessLogic::callSWSendBuf() {
+  if (handler_->operation_type_ == 0) {
+    // ComposeUrls - read serialized Url objects from resp_buf_
+    int32_t count = *reinterpret_cast<int32_t*>(resp_buf_ + resp_buf_offset_);
+    handler_->current_target_urls_.clear();
+    handler_->current_target_urls_.reserve(count);
+    size_t read_offset = 0;
+    for (int i = 0; i < count; i++) {
+      Url url = readUrlFromBuffer(resp_buf_, read_offset);
+      handler_->current_target_urls_.push_back(url);
+    }
+    LOG_DEBUG(debug) << "ComposeUrls completed in SW Path, count: " << count;
+  } else if (handler_->operation_type_ == 1) {
+    // GetExtendedUrls - read strings from resp_buf_
+    int32_t count = *reinterpret_cast<int32_t*>(resp_buf_ + resp_buf_offset_);
+    handler_->current_extended_urls_.clear();
+    handler_->current_extended_urls_.reserve(count);
+    
+    size_t read_offset = 0;
+    for (int i = 0; i < count; i++) {
+      std::string url = readString(resp_buf_, read_offset);
+      handler_->current_extended_urls_.push_back(url);
+    }
+    LOG_DEBUG(debug) << "GetExtendedUrls completed in SW Path, count: " << count;
+  }
+}
+#endif // ENABLE_GEM5
+
+#ifdef ENABLE_GEM5
+void UrlShortenBusinessLogic::serializeComposeUrlsResponse(const std::vector<Url>& urls) {
+  size_t offset = 0;
+  for (const auto& url : urls) {
+    writeUrlToBuffer(resp_buf_, offset, url);
+  }
+
+  *reinterpret_cast<int32_t*>(resp_buf_ + offset) = static_cast<int32_t>(urls.size());
+  resp_buf_offset_ = offset;
+  resp_buf_size_ = offset + sizeof(int32_t);
+}
+
+void UrlShortenBusinessLogic::serializeExtendedUrlsResponse(
+    const std::vector<std::string>& extended_urls) {
+  size_t offset = 0;
+  for (const auto& url : extended_urls) {
+    writeStringToBuffer(resp_buf_, offset, url);
+  }
+
+  *reinterpret_cast<int32_t*>(resp_buf_ + offset) =
+      static_cast<int32_t>(extended_urls.size());
+  resp_buf_offset_ = offset;
+  resp_buf_size_ = offset + sizeof(int32_t);
+}
+#endif // ENABLE_GEM5
+
+#ifdef ENABLE_CEREBELLUM
+
+void UrlShortenBusinessLogic::callEngineRead() {
+  auto socket = getSocketFromTransport();
+  if (!socket || !sendAddress || !readAddress) {
+    return;
+  }
+  // 1) Send recv buffer address
+  uint8_t* recv_addr = socket->getReplaySocket().getRecvBufferAddr();
+  volatile uint64_t cmd = reinterpret_cast<uint64_t>(recv_addr) | cmd_send_dpdk_buf;
+  *sendAddress = cmd;
+  volatile uint64_t ack = *readAddress;
+
+  // 2) Send total data size
+  size_t total_size = socket->getReplaySocket().getCurrentPacketSize();
+  uint64_t dpdk_len = (static_cast<uint64_t>(total_size) & 0x7FF) << 4;
+  cmd = dpdk_len | cmd_send_dpdk_len;
+  *sendAddress = cmd;
+  ack = *readAddress;
+
+  (void)ack;
+  // 3) Advance recv buffer pointer to next position
+  socket->getReplaySocket().advanceReadPos();
+}
+
+bool UrlShortenBusinessLogic::callEngineDispatch() {
+  if (!sendAddress || !readAddress) {
+    return false;
+  }
+  // 1) Send app recv buffer address
+  volatile uint64_t cmd = reinterpret_cast<uint64_t>(recv_buf_) | cmd_set_app_flag;
+  *sendAddress = cmd;
+
+  // 2) Wait for Engine to set the request
+  volatile uint64_t request = *readAddress;
+  int operation_type = (request & 0xF);
+
+  // 3) Call appropriate BusinessLogic Function
+  if (operation_type == 0) {
+    ComposeUrls();
+  } else if (operation_type == 1) {
+    GetExtendedUrls();
+  }
+
+  LOG_DEBUG(debug) << "UrlShorten operation " << operation_type << " completed in Engine Path";
+  return true;
+}
+
+void UrlShortenBusinessLogic::callEngineWrite() {
+  auto socket = getSocketFromTransport();
+  if (!socket || !sendAddress || !readAddress) {
+    return;
+  }
+  // 1) Send DPDK resp buffer address
+  uint8_t* resp_addr = socket->getReplaySocket().getRespBufferAddr();
+  volatile uint64_t cmd = reinterpret_cast<uint64_t>(resp_addr) | cmd_set_dpdk_flag;
+  *sendAddress = cmd;
+  volatile uint64_t ack = *readAddress;
+  (void)ack;
+  // 2) Advance resp buffer pointer to next position
+  uint16_t data_size;
+  if (handler_->operation_type_ == 0) {
+    data_size = 350; // fixed response size for ComposeUrls
+  } else if (handler_->operation_type_ == 1) {
+    data_size = 240; // fixed response size for GetExtendedUrls
+  } else {
+    LOG(error) << "Unknown operation type: " << handler_->operation_type_;
+    return;
+  }
+
+  socket->getReplaySocket().advanceWritePos(data_size);
+}
+
+void UrlShortenBusinessLogic::callEngineSendresp(bool success) {
+  if (!sendAddress || !readAddress) {
+    return;
+  }
+
+  uint64_t response = 0;
+  size_t response_len = 0;
+
+  if (handler_->operation_type_ == 0) {
+    response_len = resp_buf_size_; // For ComposeUrls
+  } else if (handler_->operation_type_ == 1) {
+    response_len = resp_buf_size_; // For GetExtendedUrls
+  }
+
+  response |= (handler_->operation_type_ & 0xF) << 4; // operation type
+  response |= (success ? 1ULL : 0ULL) << 8; // success flag
+  response |= (response_len & 0x7FF) << 9; // length of response data
+
+  uint64_t cmd = response | cmd_send_app_resp;
+  *sendAddress = cmd;
+  volatile uint64_t ack = *readAddress;
+  (void)ack;
+}
+
+void UrlShortenBusinessLogic::callEngineSendBuf() {
+  if (!sendAddress || !readAddress) {
+    return;
+  }
+  // 1) Send response buffer to Engine
+  uint64_t cmd = reinterpret_cast<uint64_t>(resp_buf_) | cmd_send_app_buf;
+  *sendAddress = cmd;
+  volatile uint64_t ack = *readAddress;
+  (void)ack;
+}
+#endif // ENABLE_CEREBELLUM
+
+#ifdef ENABLE_GEM5
+void UrlShortenBusinessLogic::runLoop(
+    apache::thrift::TDispatchProcessor* processor,
+    std::shared_ptr<::apache::thrift::protocol::TProtocol> in,
+    std::shared_ptr<::apache::thrift::protocol::TProtocol> out,
+    void* connectionContext) {
+  LOG(info) << "JU:JU =========================================";
+  LOG(info) << "JU:JU Start UrlShorten business logic runLoop";
+
+  processor_ = processor;
+  in_ = in;
+  out_ = out;
+  connectionContext_ = connectionContext;
+  read_pos_ = 0;
+  write_pos_ = 0;
+
+  int runs = 0;
+  for (bool done = false; !done;) {
+    if (runs == 1000) {
+      LOG(info) << "JU:JU Begin ROI";
+#ifdef ENABLE_GEM5_TEST
+      m5_exit_addr(0);
+#endif
+    }
+
+#ifdef ENABLE_CEREBELLUM
+    callEngineRead();
+    bool res = callEngineDispatch();
+    callEngineWrite();
+#else
+    callSWread();
+    bool res = callSWdispatch();
+    callSWwrite();
+#endif
+
+    if (!res) {
+      break;
+    }
+
+    done = checkReplayEOF();
+    if (done) {
+      LOG(info) << "JU:JU EOF reached - trace replay complete";
+    }
+
+    runs++;
+  }
+
+#ifdef ENABLE_GEM5_TEST
+  m5_work_end_addr(0, 0);
+  LOG(info) << "JU:JU End ROI";
+#endif
+
+  if (validateReplay()) {
+    LOG(info) << "JU:JU Replay validation PASSED";
+  } else {
+    LOG(info) << "JU:JU Replay validation FAILED";
+  }
+
+  LOG(info) << "JU:JU Finished UrlShorten business logic runLoop";
+  LOG(info) << "JU:JU =========================================";
+}
+
+void UrlShortenBusinessLogic::ComposeUrls() {
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...url strings...]
+  size_t offset = 0;
+  int64_t req_id    = readInt64(recv_buf_, offset);
+  readInt32(recv_buf_, offset);                      // op_type (0 = ComposeUrls)
+  int32_t url_count = readInt32(recv_buf_, offset);
+
+  std::vector<std::string> urls;
+  for (int i = 0; i < url_count; i++) {
+    urls.push_back(readString(recv_buf_, offset));
+  }
+
+  std::vector<Url> target_urls;
+  bool operation_success = false;
+  try {
+    if (!urls.empty()) {
+      for (auto& url : urls) {
+        Url new_target_url;
+        new_target_url.expanded_url = url;
+        new_target_url.shortened_url = HOSTNAME + _GenRandomStr(10);
+        target_urls.emplace_back(new_target_url);
+      }
+      _StoreUrlsInMongo(target_urls);
+    }
+
+    // Serialize response for both SW and Cerebellum paths.
+    serializeComposeUrlsResponse(target_urls);
+    operation_success = true;
+  } catch (const std::exception& e) {
+    LOG(error) << "ComposeUrls failed: " << e.what();
+    *reinterpret_cast<int32_t*>(resp_buf_) = -1;
+  }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  _requests_processed++;
+  _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      end_time - start_time).count();
+
+  LOG_DEBUG(debug) << "Request " << req_id << " composed " << url_count
+                   << " URLs in GEM5 path";
+
+#ifdef ENABLE_CEREBELLUM
+  callEngineSendresp(operation_success);
+  callEngineSendBuf();
+#else
+  callSWsendresp(operation_success);
+  callSWSendBuf();
+#endif // ENABLE_CEREBELLUM
+}
+
+void UrlShortenBusinessLogic::GetExtendedUrls() {
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...shortened_url strings...]
+  size_t offset = 0;
+  int64_t req_id    = readInt64(recv_buf_, offset);
+  readInt32(recv_buf_, offset);                      // op_type (1 = GetExtendedUrls)
+  int32_t url_count = readInt32(recv_buf_, offset);
+
+  std::vector<std::string> shortened_urls;
+  for (int i = 0; i < url_count; i++) {
+    shortened_urls.push_back(readString(recv_buf_, offset));
+  }
+
+  std::vector<std::string> extended_urls;
+  bool operation_success = false;
+  try {
+    GetExtendedUrls(extended_urls, req_id, shortened_urls);
+
+    // Serialize response for both SW and Cerebellum paths.
+    serializeExtendedUrlsResponse(extended_urls);
+    operation_success = true;
+  } catch (const std::exception& e) {
+    LOG(error) << "GetExtendedUrls failed: " << e.what();
+    *reinterpret_cast<int32_t*>(resp_buf_) = -1;
+  }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  _requests_processed++;
+  _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      end_time - start_time).count();
+
+  LOG_DEBUG(debug) << "Request " << req_id << " fetched " << url_count
+                   << " extended URLs in GEM5 path";
+
+#ifdef ENABLE_CEREBELLUM
+  callEngineSendresp(operation_success);
+  callEngineSendBuf();
+#else
+  callSWsendresp(operation_success);
+  callSWSendBuf();
+#endif // ENABLE_CEREBELLUM
+}
+#endif // ENABLE_GEM5
 
 std::string UrlShortenBusinessLogic::_GenRandomStr(int length) {
   const char char_map[] = "abcdefghijklmnopqrstuvwxyzABCDEF"

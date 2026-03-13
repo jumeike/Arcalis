@@ -315,7 +315,11 @@ class UrlShortenServiceClient : virtual public UrlShortenServiceIf {
   ::apache::thrift::protocol::TProtocol* oprot_;
 };
 
+#ifdef ENABLE_GEM5
+class UrlShortenServiceProcessor : public apache::thrift::TDispatchProcessor {
+#else
 class UrlShortenServiceProcessor : public ::apache::thrift::TDispatchProcessor {
+#endif
  protected:
   ::std::shared_ptr<UrlShortenServiceIf> iface_;
   virtual bool dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext) override;
@@ -332,15 +336,30 @@ class UrlShortenServiceProcessor : public ::apache::thrift::TDispatchProcessor {
     processMap_["GetExtendedUrls"] = &UrlShortenServiceProcessor::process_GetExtendedUrls;
   }
 
+#ifdef ENABLE_GEM5
+  bool process(std::shared_ptr<::apache::thrift::protocol::TProtocol> iprot,
+               std::shared_ptr<::apache::thrift::protocol::TProtocol> oprot,
+               void* callContext) override;
+#endif
+
   virtual ~UrlShortenServiceProcessor() {}
 };
 
+#ifdef ENABLE_GEM5
+class UrlShortenServiceProcessorFactory : public apache::thrift::TProcessorFactory {
+ public:
+  UrlShortenServiceProcessorFactory(const ::std::shared_ptr< UrlShortenServiceIfFactory >& handlerFactory) noexcept :
+      handlerFactory_(handlerFactory) {}
+
+  ::std::shared_ptr< apache::thrift::TProcessor > getProcessor(const apache::thrift::TConnectionInfo& connInfo) override;
+#else
 class UrlShortenServiceProcessorFactory : public ::apache::thrift::TProcessorFactory {
  public:
   UrlShortenServiceProcessorFactory(const ::std::shared_ptr< UrlShortenServiceIfFactory >& handlerFactory) noexcept :
       handlerFactory_(handlerFactory) {}
 
   ::std::shared_ptr< ::apache::thrift::TProcessor > getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) override;
+#endif
 
  protected:
   ::std::shared_ptr< UrlShortenServiceIfFactory > handlerFactory_;
@@ -385,11 +404,19 @@ class UrlShortenServiceMultiface : virtual public UrlShortenServiceIf {
 // only be used when you need to share a connection among multiple threads
 class UrlShortenServiceConcurrentClient : virtual public UrlShortenServiceIf {
  public:
+#ifdef ENABLE_GEM5
+  UrlShortenServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else
   UrlShortenServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(prot);
   }
+#ifdef ENABLE_GEM5
+  UrlShortenServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else
   UrlShortenServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(iprot,oprot);
   }
@@ -421,7 +448,11 @@ class UrlShortenServiceConcurrentClient : virtual public UrlShortenServiceIf {
   std::shared_ptr< ::apache::thrift::protocol::TProtocol> poprot_;
   ::apache::thrift::protocol::TProtocol* iprot_;
   ::apache::thrift::protocol::TProtocol* oprot_;
+#ifdef ENABLE_GEM5
+  std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#else
   std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#endif
 };
 
 #ifdef _MSC_VER

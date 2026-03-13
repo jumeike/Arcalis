@@ -23,18 +23,22 @@ public:
         std::string ext = binary_mode ? ".bin" : ".csv";
         auto flags = binary_mode ? (std::ios::out | std::ios::binary) : std::ios::out;
         
-        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc_200k_1k_01" + ext, flags);
-        rpc_to_app_.open(dirName + "/rpc_to_app_200k_1k_01" + ext, flags);
-        app_to_rpc_.open(dirName + "/app_to_rpc_200k_1k_01" + ext, flags);
-        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk_200k_1k_01" + ext, flags);
+        dpdk_to_rpc_.open(dirName + "/dpdk_to_rpc" + ext, flags);
+        rpc_to_app_.open(dirName + "/rpc_to_app" + ext, flags);
+        app_to_rpc_.open(dirName + "/app_to_rpc" + ext, flags);
+        rpc_to_dpdk_.open(dirName + "/rpc_to_dpdk" + ext, flags);
+        dpdk_to_rpc.open(dirName + "/dpdk_to_rpc" + ".csv", std::ios::out);
+        rpc_to_app.open(dirName + "/rpc_to_app" + ".csv", std::ios::out);
+        app_to_rpc.open(dirName + "/app_to_rpc" + ".csv", std::ios::out);
+        rpc_to_dpdk.open(dirName + "/rpc_to_dpdk" + ".csv", std::ios::out);
         
-        if (!binary_mode) {
-            writeCSVHeaders();
-        }
+        // if (!binary_mode) {
+        writeCSVHeaders();
+        // }
     }
     
     void logDpdkToRpc(const void* data, uint16_t size) {
-        writePacket(dpdk_to_rpc_, 0, size, data);
+        writePacket(dpdk_to_rpc_, dpdk_to_rpc, 0, size, data);
     }
     
     void logRpcToApp(int64_t req_id, int32_t post_type, const void* data, uint16_t size) {
@@ -48,7 +52,7 @@ public:
     }
     
     void logRpcToDpdk(const void* data, uint16_t size) {
-        writePacket(rpc_to_dpdk_, 0, size, data);
+        writePacket(rpc_to_dpdk_, rpc_to_dpdk, 0, size, data);
     }
     
     ~PacketLogger() {
@@ -56,6 +60,10 @@ public:
         rpc_to_app_.close();
         app_to_rpc_.close();
         rpc_to_dpdk_.close();
+        dpdk_to_rpc.close();
+        rpc_to_app.close();
+        app_to_rpc.close();
+        rpc_to_dpdk.close();
     }
 
 private:
@@ -89,7 +97,7 @@ private:
             std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     }
     
-    void writePacket(std::ofstream& file, int64_t req_id, uint16_t size, const void* data) {
+    void writePacket(std::ofstream& file, std::ofstream& csv_file, int64_t req_id, uint16_t size, const void* data) {
         if (!file.is_open()) return;
         
         if (binary_mode_) {
@@ -98,13 +106,14 @@ private:
             if (data && size > 0) {
                 file.write(reinterpret_cast<const char*>(data), size);
             }
-        } else {
-            // CSV format: timestamp,req_id,size,data_hex
-            file << getCurrentTimestamp() << "," << req_id << "," << size << ",";
-            writeHexData(file, data, size);
-            file << "\n";
-        }
+        } 
+        // CSV format: timestamp,req_id,size,data_hex
+        csv_file << getCurrentTimestamp() << "," << req_id << "," << size << ",";
+        writeHexData(csv_file, data, size);
+        csv_file << "\n";
+        
         file.flush();
+        csv_file.flush();
     }
     
     void writeAppPacket(std::ofstream& file, const AppHeader& header, const void* data) {
@@ -144,14 +153,14 @@ private:
     }
     
     void writeCSVHeaders() {
-        if (dpdk_to_rpc_.is_open()) 
-            dpdk_to_rpc_ << "timestamp,req_id,size,data_hex\n";
-        if (rpc_to_app_.is_open()) 
-            rpc_to_app_ << "timestamp,req_id,post_type,size,data_hex\n";
-        if (app_to_rpc_.is_open()) 
-            app_to_rpc_ << "timestamp,req_id,result,size,data_hex\n";
-        if (rpc_to_dpdk_.is_open()) 
-            rpc_to_dpdk_ << "timestamp,req_id,size,data_hex\n";
+        if (dpdk_to_rpc.is_open()) 
+            dpdk_to_rpc << "timestamp,req_id,size,data_hex\n";
+        if (rpc_to_app.is_open()) 
+            rpc_to_app << "timestamp,req_id,post_type,size,data_hex\n";
+        if (app_to_rpc.is_open()) 
+            app_to_rpc << "timestamp,req_id,result,size,data_hex\n";
+        if (rpc_to_dpdk.is_open()) 
+            rpc_to_dpdk << "timestamp,req_id,size,data_hex\n";
     }
     
     void writeHexData(std::ofstream& file, const void* data, uint16_t size) {
@@ -168,6 +177,10 @@ private:
     std::ofstream rpc_to_app_;
     std::ofstream app_to_rpc_;
     std::ofstream rpc_to_dpdk_;
+    std::ofstream dpdk_to_rpc;
+    std::ofstream rpc_to_app;
+    std::ofstream app_to_rpc;
+    std::ofstream rpc_to_dpdk;
 };
 
 // Convenience macros

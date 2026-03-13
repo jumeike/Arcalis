@@ -6933,6 +6933,7 @@ namespace thrift {
       }
 
       try {
+        std::cout << "CU:CU" << std::endl;
         if (!processor_->process(inputProtocol_, outputProtocol_, opaqueContext_)) { //to TDispatchProcessor.h:108
           break;
         }

@@ -6,6 +6,16 @@ UrlShortenHandler::UrlShortenHandler() {
   LOG(info) << "UrlShortenHandler initialized";
 }
 
+#ifdef ENABLE_GEM5
+void UrlShortenHandler::setRecvBuffer(uint8_t* buf) {
+  recv_buffer_ = buf;
+  ready_for_request_ = true;
+  business_logic_->setHandler(this);
+  LOG(debug) << "UrlShortenHandler receive buffer set to: "
+             << std::hex << reinterpret_cast<uintptr_t>(buf);
+}
+#endif
+
 void UrlShortenHandler::ComposeUrls(
     std::vector<Url>& _return,
     int64_t req_id,
@@ -21,7 +31,23 @@ void UrlShortenHandler::ComposeUrls(
   
   // Delegate to business logic
   if (business_logic_ != nullptr) {
+#ifdef ENABLE_GEM5
+    operation_type_ = 0; // ComposeUrls
+    success_ = false;
+    current_target_urls_.clear();
+
+    uint8_t* buf = business_logic_->getRecvBuffer();
+    *reinterpret_cast<int64_t*>(buf)      = req_id;
+    *reinterpret_cast<int32_t*>(buf + 8)  = 0; // op_type
+    *reinterpret_cast<int32_t*>(buf + 12) = urls.size();
+    size_t offset = 16;
+    for (int i = 0; i < (int)urls.size(); i++) {
+      business_logic_->writeStringToBuffer(buf, offset, urls[i]);
+    }
+    business_logic_->ComposeUrls();
+#else
     business_logic_->ComposeUrls(_return, req_id, urls);
+#endif
   } else {
     LOG(error) << "Business logic not set for request " << req_id;
     ServiceException se;
@@ -32,6 +58,12 @@ void UrlShortenHandler::ComposeUrls(
   
   auto business_end_time = std::chrono::high_resolution_clock::now();
   
+#ifdef ENABLE_GEM5
+  if (success_) {
+    _return = current_target_urls_;
+  }
+#endif
+
   // Process outgoing RPC (response preparation, tracing completion)
   ProcessOutgoingRpc();
   
@@ -70,7 +102,23 @@ void UrlShortenHandler::GetExtendedUrls(
   
   // Delegate to business logic
   if (business_logic_ != nullptr) {
+#ifdef ENABLE_GEM5
+    operation_type_ = 1; // GetExtendedUrls
+    success_ = false;
+    current_extended_urls_.clear();
+
+    uint8_t* buf = business_logic_->getRecvBuffer();
+    *reinterpret_cast<int64_t*>(buf)      = req_id;
+    *reinterpret_cast<int32_t*>(buf + 8)  = 1; // op_type
+    *reinterpret_cast<int32_t*>(buf + 12) = shortened_urls.size();
+    size_t offset = 16;
+    for (int i = 0; i < (int)shortened_urls.size(); i++) {
+      business_logic_->writeStringToBuffer(buf, offset, shortened_urls[i]);
+    }
+    business_logic_->GetExtendedUrls();
+#else
     business_logic_->GetExtendedUrls(_return, req_id, shortened_urls);
+#endif
   } else {
     LOG(error) << "Business logic not set for request " << req_id;
     ServiceException se;
@@ -81,6 +129,12 @@ void UrlShortenHandler::GetExtendedUrls(
   
   auto business_end_time = std::chrono::high_resolution_clock::now();
   
+#ifdef ENABLE_GEM5
+  if (success_) {
+    _return = current_extended_urls_;
+  }
+#endif
+
   // Process outgoing RPC (response preparation, tracing completion)
   ProcessOutgoingRpc();
   

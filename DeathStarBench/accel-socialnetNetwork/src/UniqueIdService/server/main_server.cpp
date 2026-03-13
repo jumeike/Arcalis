@@ -23,7 +23,7 @@
 #include "UniqueIdHandler.h"
 #include "UniqueIdBusinessLogic.h"
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
 #pragma message("Compiling with gem5 instructions")
 #include <gem5/m5ops.h>
 #include "m5_mmap.h"
@@ -55,6 +55,10 @@ void sigintHandler(int sig) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef ENABLE_GEM5
+    map_m5_mem();
+#endif
+
 #ifdef DEBUG_LOGGING
   std::cout << "DEBUG_LOGGING is defined!" << std::endl;
 #else
@@ -64,8 +68,8 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, sigintHandler);
   init_logger();
 
-#ifdef ENABLE_GEM5  
-    std::string trace_file = "traces/dpdk_to_rpc.bin";
+#ifdef ENABLE_GEM5
+    std::string trace_file = "uniqueid_traces/dpdk_to_rpc.bin";
     int num_requests = -1;  // -1 means read all
     
     for (int i = 1; i < argc; i++) {
@@ -75,7 +79,7 @@ int main(int argc, char *argv[]) {
             num_requests = std::stoi(argv[++i]);
         } else if (std::string(argv[i]) == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]\n";
-            std::cout << "  --trace-file <file>     Trace file to replay (default: traces/dpdk_to_rpc.bin)\n";
+            std::cout << "  --trace-file <file>     Trace file to replay (default: uniqueid_traces/dpdk_to_rpc.bin)\n";
             std::cout << "  --num-requests <num>    Number of requests to process (default: all)\n";
             std::cout << "  --help                  Show this help\n";
             return 0;
@@ -87,12 +91,14 @@ int main(int argc, char *argv[]) {
         LOG(info) << "Max requests: " << num_requests;
     }
 
-  apache::thrift::transport::TSocket::setTraceConfig(trace_file, num_requests);
-#endif  
   //SetUpTracer("config/jaeger-config.yml", "unique-id-service");
+  apache::thrift::transport::TSocket::setTraceConfig(trace_file, num_requests);
+#endif //ENABLE_GEM5 
+
 #ifdef ENABLE_TRACING  
-  PacketLogger::getInstance().initializeLogFiles("traces", false);
-#endif
+  PacketLogger::getInstance().initializeLogFiles("uniqueid_traces", false);
+#endif  
+  
   json config_json;
   if (load_config_file("config/service-config.json", &config_json) != 0) {
     exit(EXIT_FAILURE);
@@ -106,10 +112,6 @@ int main(int argc, char *argv[]) {
   }
 
   LOG(info) << "machine_id = " << machine_id;
-
-#ifdef ENABLE_GEM5_TEST
-    map_m5_mem();
-#endif
 
   // Create business logic instance
   auto business_logic = std::make_unique<UniqueIdBusinessLogic>(machine_id);
@@ -142,7 +144,7 @@ int main(int argc, char *argv[]) {
   LOG(info) << "Starting the unique-id-service server ...";
   LOG(info) << "Business logic initialized and connected to RPC handler";
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
     m5_work_begin_addr(0,0); // switch cpu type
 #ifdef ENABLE_CEREBELLUM
 
@@ -186,7 +188,7 @@ int main(int argc, char *argv[]) {
     LOG(info) << "  Business: " << business_time << " ns avg, "
               << business_fraction << "% of total";
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
     unmap_m5_mem();
 #endif
  

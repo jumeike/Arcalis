@@ -3,13 +3,19 @@ project(PostStorageService)
 
 # Debug build type
 set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING -DENABLE_GEM5")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_TRACING -DENABLE_GEM5")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_CEREBELLUM -DENABLE_GEM5")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -no-pie -fno-pie")
+
+# Uncomment to enable Cerebellum
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CEREBELLUM")
+#set(ENABLE_CEREBELLUM ON)
+
+# Uncomment to enable GEM5  
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
+set(ENABLE_GEM5 ON)
+
+# Set paths for GEM5
+set(M5OPS_HEADER_PATH "/home/ubuntu/gem5/include")
+set(M5_BUILD_PATH "/home/ubuntu/gem5/util/m5/build/x86")
 
 find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(nlohmann_json REQUIRED)
@@ -18,8 +24,31 @@ pkg_check_modules(THRIFT REQUIRED thrift)
 pkg_check_modules(LIBMEMCACHED REQUIRED libmemcached)
 pkg_check_modules(MONGOC REQUIRED libmongoc-1.0)
 
+# Determine binary name and libraries based on enabled features
+set(BINARY_NAME "PostStorageService.hw")
+set(EXTRA_LIBS "")
+set(EXTRA_INCLUDE_DIRS "")
+
+if(ENABLE_CEREBELLUM)
+    set(BINARY_NAME "${BINARY_NAME}.crb")
+    list(APPEND EXTRA_LIBS "cerebellum")
+endif()
+
+if(ENABLE_GEM5)
+    set(BINARY_NAME "${BINARY_NAME}.m5")
+    list(APPEND EXTRA_LIBS "m5")
+    if(M5OPS_HEADER_PATH)
+        list(APPEND EXTRA_INCLUDE_DIRS "${M5OPS_HEADER_PATH}" "${M5OPS_HEADER_PATH}/../util/m5/src")
+    endif()
+    if(M5_BUILD_PATH)
+        link_directories("${M5_BUILD_PATH}/out/")
+    endif()
+    # Add linker flags for GEM5
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -no-pie -Wl,-no-pie")
+endif()
+
 add_executable(
-    PostStorageService
+    ${BINARY_NAME}
     main_server.cpp
     PostStorageHandler.cpp
     PostStorageBusinessLogic.cpp
@@ -31,24 +60,27 @@ add_executable(
 #add_compile_definitions(DEBUG_LOGGING)
 
 target_include_directories(
-    PostStorageService PRIVATE
+    ${BINARY_NAME} PRIVATE
+    #/usr/local/include/jaegertracing
     ${LIBMEMCACHED_INCLUDE_DIR}
-    #${MONGOC_INCLUDE_DIRS}
     /usr/include/libmongoc-1.0
     /usr/include/libbson-1.0
     .
+    ${EXTRA_INCLUDE_DIRS}
 )
 
 target_link_directories(PostStorageService PRIVATE /usr/local/lib)
 
 target_link_libraries(
-    PostStorageService
+    ${BINARY_NAME}
     ${LIBMEMCACHED_LIBRARIES}
     ${MONGOC_LIBRARIES}
-    thrift
-    pthread
+    nlohmann_json
+    ${THRIFT_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${Boost_LIBRARIES}
     Boost::log
     Boost::log_setup
+    ${EXTRA_LIBS}
+    #jaegertracing
 )
-
-install(TARGETS PostStorageService DESTINATION ./)

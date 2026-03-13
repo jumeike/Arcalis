@@ -9,7 +9,7 @@
   "secret": "secret",
   "unique-id-service": {
     "keepalive_ms": 10000,
-    "netif": "enp1s0",
+    "netif": "lo",
     "addr": "unique-id-service",
     "connections": 512,
     "timeout_ms": 10000,

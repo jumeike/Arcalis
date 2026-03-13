@@ -34,7 +34,8 @@
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TSocket.h> 
-#include "PacketReplaySocket.h"
+#include <PacketReplaySocket.h>
+#include <gem5/m5ops.h>
 #endif // ENABLE_GEM5
 
 namespace social_network {
@@ -119,7 +120,7 @@ class UniqueIdBusinessLogic {
      //auto buffered = dynamic_cast<apache::thrift::transport::TBufferedTransport*>(in_->getTransport().get());
      //auto socket = buffered ? dynamic_cast<apache::thrift::transport::TSocket*>(buffered->getUnderlyingTransport().get()) : nullptr;
      auto socket = getSocketFromTransport();
-     return socket ? socket->getReplaySocket().validateReplay("traces/rpc_to_dpdk.bin") : false;
+     return socket ? socket->getReplaySocket().validateReplay("uniqueid_traces/rpc_to_dpdk.bin") : false;
   }
 #endif // ENABLE_GEM5
  public:
@@ -154,7 +155,7 @@ class UniqueIdBusinessLogic {
 // HW Accelerator path member functions
   void callEngineRead();
   bool callEngineDispatch();
-  void callEnginewrite();
+  void callEngineWrite();
   void callEngineSendresp(bool success);
   void callEngineSendBuf();
   void setAddresses(volatile uint64_t* sAddress, volatile uint64_t* rAddress) {

@@ -7,7 +7,7 @@
 #include "PostStorageService.h"
 
 #ifdef ENABLE_GEM5
-#include "../src/PostStorageService/server/PostStorageHandler.h"
+#include "../src/OptPostStorageService/server/PostStorageHandler.h"
 #endif
 namespace social_network {
 

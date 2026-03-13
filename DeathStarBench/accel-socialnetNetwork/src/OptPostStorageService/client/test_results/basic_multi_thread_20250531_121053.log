@@ -1,0 +1,46 @@
+=== PostStorage Service Client Test ===
+Server: localhost:9091
+Threads: 2
+Operations per thread: 10
+Warmup operations per thread: 5
+Mix: Store/Read/ReadMulti operations
+
+Thread 0 connected to post storage server
+Thread 1 connected to post storage server
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 0 })
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 1 })
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 2 })
+Thread 1 completed warmup, stored 5 posts
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 3 })
+Thread 1 read post 100003 (text: Sample post text from thread 1...)
+Warmup error in thread 0: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 4 })
+Thread 0 completed warmup, stored 0 posts
+Thread 0 - Operation 0 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 5 })
+Thread 0 - Operation 1 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 6 })
+Thread 0 - Operation 2 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 7 })
+Thread 0 - Operation 3 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 8 })
+Thread 0 - Operation 4 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 9 })
+Thread 0 - Operation 5 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 10 })
+Thread 0 - Operation 6 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 11 })
+Thread 1 completed, stored 11 total posts
+Thread 0 - Operation 7 failed: TException - service has thrown: ServiceException(errorCode=SE_MONGODB_ERROR, message=E11000 duplicate key error collection: post.post index: post_id_1 dup key: { post_id: 12 })
+Thread 0 completed, stored 1 total posts
+
+=== TEST RESULTS ===
+Total Requests: 20
+Successful: 12 (60%)
+Failed: 8 (40%)
+
+=== OPERATION BREAKDOWN ===
+Store operations: 7
+Read operations: 5
+Read multi operations: 0
+
+=== PERFORMANCE ===
+Total Duration: 7 ms
+Throughput: 1714.29 req/s
+
+=== LATENCY ===
+Average: 367 μs
+Min: 142 μs
+Max: 499 μs

@@ -1,10 +1,12 @@
 #ifndef SOCIAL_NETWORK_MICROSERVICES_POSTSTORAGEBUSINESSLOGIC_H
 #define SOCIAL_NETWORK_MICROSERVICES_POSTSTORAGEBUSINESSLOGIC_H
 
-#include <bson/bson.h>
-#include <libmemcached/memcached.h>
-#include <libmemcached/util.h>
-#include <mongoc.h>
+// REMOVED: Database includes
+// #include <bson/bson.h>
+// #include <libmemcached/memcached.h>
+// #include <libmemcached/util.h>
+// #include <mongoc.h>
+
 #include <nlohmann/json.hpp>
 #include <atomic>
 #include <map>
@@ -44,8 +46,8 @@ class PostStorageHandler; // Forward declaration
 
 class PostStorageBusinessLogic {
  public:
-  PostStorageBusinessLogic(memcached_pool_st* memcached_pool, 
-                          mongoc_client_pool_t* mongodb_pool);
+  // UPDATED: Constructor no longer takes database pools
+  PostStorageBusinessLogic(void* unused1 = nullptr, void* unused2 = nullptr);
 #ifdef ENABLE_GEM5
   ~PostStorageBusinessLogic();
 #else  
@@ -83,8 +85,9 @@ class PostStorageBusinessLogic {
 #endif // ENABLE_GEM5
 
  private:
-  memcached_pool_st* _memcached_client_pool;
-  mongoc_client_pool_t* _mongodb_client_pool;
+  // REMOVED: Database pools
+  // memcached_pool_st* _memcached_client_pool;
+  // mongoc_client_pool_t* _mongodb_client_pool;
   
   // Metrics (using atomics for thread safety)
   mutable std::mutex _metrics_mutex;
@@ -98,11 +101,11 @@ class PostStorageBusinessLogic {
   std::atomic<uint64_t> _mongodb_time_ns{0};
   std::atomic<uint64_t> _memcached_time_ns{0};
 
-  // Helper functions
-  Post ParsePostFromBson(const bson_t* doc);
-  Post ParsePostFromJson(const json& post_json);
-  void SetPostToMemcached(int64_t post_id, const std::string& post_json);
-  std::string PostToJsonString(const Post& post);
+  // REMOVED: Database helper functions
+  // Post ParsePostFromBson(const bson_t* doc);
+  // Post ParsePostFromJson(const json& post_json);
+  // void SetPostToMemcached(int64_t post_id, const std::string& post_json);
+  // std::string PostToJsonString(const Post& post);
 
 #ifdef ENABLE_GEM5
   // Pointer to PostStorageHandler

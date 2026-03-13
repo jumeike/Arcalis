@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
-project(UniqueIdService)
+project(PostStorageService)
 
 # Debug build type
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -no-pie -fno-pie")
 
 # Uncomment to enable Cerebellum
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CEREBELLUM")
-#set(ENABLE_CEREBELLUM ON)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CEREBELLUM")
+set(ENABLE_CEREBELLUM ON)
 
 # Uncomment to enable GEM5  
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
@@ -22,8 +22,12 @@ find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(THRIFT REQUIRED thrift)
 
+# REMOVED: Database dependencies
+# pkg_check_modules(LIBMEMCACHED REQUIRED libmemcached)
+# pkg_check_modules(MONGOC REQUIRED libmongoc-1.0)
+
 # Determine binary name and libraries based on enabled features
-set(BINARY_NAME "UniqueIdService.hw")
+set(BINARY_NAME "PostStorageService.hw.local")
 set(EXTRA_LIBS "")
 set(EXTRA_INCLUDE_DIRS "")
 
@@ -48,9 +52,9 @@ endif()
 add_executable(
     ${BINARY_NAME}
     main_server.cpp
-    UniqueIdHandler.cpp
-    UniqueIdBusinessLogic.cpp
-    ${THRIFT_GEN_CPP_DIR}/UniqueIdService.cpp
+    PostStorageHandler.cpp
+    PostStorageBusinessLogic.cpp
+    ${THRIFT_GEN_CPP_DIR}/PostStorageService.cpp
     ${THRIFT_GEN_CPP_DIR}/social_network_types.cpp
     ${THRIFT_GEN_CPP_DIR}/social_network_constants.cpp
 )
@@ -59,15 +63,19 @@ add_executable(
 
 target_include_directories(
     ${BINARY_NAME} PRIVATE
-    #/usr/local/include/jaegertracing
+    # REMOVED: Database includes
+    # ${LIBMEMCACHED_INCLUDE_DIR}
+    # /usr/include/libmongoc-1.0
+    # /usr/include/libbson-1.0
     .
     ${EXTRA_INCLUDE_DIRS}
 )
 
-target_link_directories(UniqueIdService PRIVATE /usr/local/lib)
-
 target_link_libraries(
     ${BINARY_NAME}
+    # REMOVED: Database libraries
+    # ${LIBMEMCACHED_LIBRARIES}
+    # ${MONGOC_LIBRARIES}
     nlohmann_json
     ${THRIFT_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -75,5 +83,4 @@ target_link_libraries(
     Boost::log
     Boost::log_setup
     ${EXTRA_LIBS}
-    #jaegertracing
 )

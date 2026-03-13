@@ -231,17 +231,10 @@ void UniqueIdBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* processo
     read_pos_ = 0;
     write_pos_ = 0;
 
-    int runs = 0;
-
-    //printf("JU:JU Initial Begin ROI\n");
+    LOG(info) << "JU:JU Begin ROI";
+    m5_exit_addr(0);
 
     for (bool done = false; !done;) {
-        if (runs == 10000) {
-            LOG(info) << "JU:JU Begin ROI";
-            #ifdef ENABLE_GEM5_TEST
-            m5_exit_addr(0);
-            #endif
-        }
 
         #ifdef ENABLE_CEREBELLUM
         callEngineRead();
@@ -256,28 +249,21 @@ void UniqueIdBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* processo
         if (!res)
             break;
 
-        #ifdef ENABLE_GEM5
         done = checkReplayEOF();
         if (done) {
             LOG(info) << "JU:JU EOF reached - trace replay complete";
         }
-        #endif
-        
-        runs++;
     }
 
-    #ifdef ENABLE_GEM5_TEST
     m5_work_end_addr(0, 0);
     LOG(info) << "JU:JU End ROI";
-    #endif
     
-    #ifdef ENABLE_GEM5
     if (validateReplay()) {
         LOG(info) << "JU:JU Replay validation PASSED";
     } else {
         LOG(info) << "JU:JU Replay validation FAILED";
     }
-    #endif
+    //m5_work_end_addr(0, 0);
     
     LOG(info) << "JU:JU Finished UniqueId business logic runLoop";
     LOG(info) << "JU:JU =========================================";

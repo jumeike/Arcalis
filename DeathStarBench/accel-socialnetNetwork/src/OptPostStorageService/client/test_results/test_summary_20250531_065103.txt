@@ -1,0 +1,72 @@
+PostStorage Service Test Summary
+Generated: Sat May 31 06:51:03 AM EDT 2025
+Server: localhost:9091
+
+=== basic_multi_thread_20250531_064959.log ===
+Throughput: 875 req/s
+Avg Latency: 947 μs
+Success Rate: 7 (35%)
+Total Operations: 20
+Errors: 13
+
+=== basic_multi_thread_20250531_065019.log ===
+Throughput: 2000 req/s
+Avg Latency: 337 μs
+Success Rate: 12 (60%)
+Total Operations: 20
+Errors: 8
+
+=== basic_multi_thread_20250531_065103.log ===
+Throughput: 1714.29 req/s
+Avg Latency: 352 μs
+Success Rate: 12 (60%)
+Total Operations: 20
+Errors: 8
+
+=== basic_single_thread_20250531_064959.log ===
+Throughput: 666.667 req/s
+Avg Latency: 752 μs
+Success Rate: 6 (60%)
+Total Operations: 10
+Errors: 4
+
+=== basic_single_thread_20250531_065019.log ===
+Throughput: 17.6367 req/s
+Avg Latency: 536 μs
+Success Rate: 10 (100%)
+Total Operations: 10
+Errors: 0
+0
+
+=== basic_single_thread_20250531_065103.log ===
+Throughput: 1428.57 req/s
+Avg Latency: 303 μs
+Success Rate: 10 (100%)
+Total Operations: 10
+Errors: 0
+0
+
+=== basic_store_only_20250531_064959.log ===
+Throughput: 1300 req/s
+Avg Latency: 403 μs
+Success Rate: 13 (65%)
+Total Operations: 20
+Errors: 0
+0
+
+=== basic_store_only_20250531_065019.log ===
+Throughput: 3000 req/s
+Avg Latency: 205 μs
+Success Rate: 18 (90%)
+Total Operations: 20
+Errors: 0
+0
+
+=== basic_store_only_20250531_065103.log ===
+Throughput: 2375 req/s
+Avg Latency: 151 μs
+Success Rate: 19 (95%)
+Total Operations: 20
+Errors: 0
+0
+

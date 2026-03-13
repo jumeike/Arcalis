@@ -120,9 +120,9 @@ public:
 
         convertToAlignedFormat(raw_data, max_requests);
 
-        std::cout << "Loaded trace from " << filename << ": " << recv_data_size_ << " bytes" << std::endl;
-        std::cout << "Aligned RPC data address: 0x" << std::hex
-                   << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
+        // std::cout << "Loaded trace from " << filename << ": " << recv_data_size_ << " bytes" << std::endl;
+        // std::cout << "Aligned RPC data address: 0x" << std::hex
+        //           << reinterpret_cast<uintptr_t>(recv_buf_) << std::dec << std::endl;
     }
 
     bool validateReplay(const std::string& expected_file) {

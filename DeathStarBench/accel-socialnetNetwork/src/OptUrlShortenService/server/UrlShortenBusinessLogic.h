@@ -36,6 +36,7 @@
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TSocket.h>
 #include "PacketReplaySocket.h"
+#include <gem5/m5ops.h>
 #endif // ENABLE_GEM5
 
 namespace social_network {

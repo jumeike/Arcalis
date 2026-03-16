@@ -374,8 +374,10 @@ void UrlShortenBusinessLogic::callEngineSendresp(bool success) {
   size_t response_len = 0;
 
   if (handler_->operation_type_ == 0) {
+    LOG_DEBUG(debug) << "Setting ComposeUrls response length: " << resp_buf_size_;
     response_len = resp_buf_size_; // For ComposeUrls
   } else if (handler_->operation_type_ == 1) {
+    LOG_DEBUG(debug) << "Setting GetExtendedUrls response length: " << resp_buf_size_;
     response_len = resp_buf_size_; // For GetExtendedUrls
   }
 
@@ -468,7 +470,7 @@ void UrlShortenBusinessLogic::ComposeUrls() {
   // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...url strings...]
   size_t offset = 0;
   int64_t req_id    = readInt64(recv_buf_, offset);
-  readInt32(recv_buf_, offset);                      // op_type (0 = ComposeUrls)
+  handler_->operation_type_ = readInt32(recv_buf_, offset); // op_type (0 = ComposeUrls)
   int32_t url_count = readInt32(recv_buf_, offset);
 
   std::vector<std::string> urls;
@@ -520,7 +522,7 @@ void UrlShortenBusinessLogic::GetExtendedUrls() {
   // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...shortened_url strings...]
   size_t offset = 0;
   int64_t req_id    = readInt64(recv_buf_, offset);
-  readInt32(recv_buf_, offset);                      // op_type (1 = GetExtendedUrls)
+  handler_->operation_type_ = readInt32(recv_buf_, offset);  // op_type (1 = GetExtendedUrls)
   int32_t url_count = readInt32(recv_buf_, offset);
 
   std::vector<std::string> shortened_urls;

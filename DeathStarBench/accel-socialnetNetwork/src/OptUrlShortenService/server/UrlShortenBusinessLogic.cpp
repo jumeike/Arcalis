@@ -224,8 +224,11 @@ void UrlShortenBusinessLogic::callSWSendBuf() {
 
 #ifdef ENABLE_GEM5
 void UrlShortenBusinessLogic::serializeComposeUrlsResponse(const std::vector<Url>& urls) {
+#ifdef ENABLE_CEREBELLUM
+  // Cerebellum path: cache-line-aligned slots so the accelerator reads each entry
+  // at a predictable 64B-aligned offset.
   constexpr size_t CACHE_LINE_SIZE = 64;
-  constexpr size_t COMPOSE_URL_SIZE = 31 + 68; // 99B per URL (31B for short URL, 68B for expanded URL, 4 for count)
+  constexpr size_t COMPOSE_URL_SIZE = 32 + 68; // 100B: (4B len + 27B short URL) + (4B len + 64B expanded URL)
   constexpr size_t CACHE_LINES_PER_URL =
       (COMPOSE_URL_SIZE + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
   constexpr size_t SLOT_SIZE = CACHE_LINES_PER_URL * CACHE_LINE_SIZE;
@@ -244,16 +247,25 @@ void UrlShortenBusinessLogic::serializeComposeUrlsResponse(const std::vector<Url
 
   resp_buf_offset_ = slot_offset;
   resp_buf_size_ = slot_offset;
-  #ifndef ENABLE_CEREBELLUM // Write at the end to help non-Cerebullum (SW) path read the count
-  *reinterpret_cast<int32_t*>(resp_buf_ + slot_offset) = static_cast<int32_t>(urls.size());
-  resp_buf_size_ = slot_offset + sizeof(int32_t);
-  #endif
+#else
+  // SW path: packed sequential layout so callSWSendBuf / readUrlFromBuffer
+  // can iterate without skipping slot gaps.
+  size_t write_offset = 0;
+  for (const auto& url : urls) {
+    writeUrlToBuffer(resp_buf_, write_offset, url);
+  }
+  *reinterpret_cast<int32_t*>(resp_buf_ + write_offset) = static_cast<int32_t>(urls.size());
+  resp_buf_offset_ = write_offset;
+  resp_buf_size_ = write_offset + sizeof(int32_t);
+#endif
 }
 
 void UrlShortenBusinessLogic::serializeExtendedUrlsResponse(
     const std::vector<std::string>& extended_urls) {
+#ifdef ENABLE_CEREBELLUM
+  // Cerebellum path: cache-line-aligned slots.
   constexpr size_t CACHE_LINE_SIZE = 64;
-  constexpr size_t EXTENDED_URL_SIZE = 68; // 68B per URL (expanded URL string, 4 for count)
+  constexpr size_t EXTENDED_URL_SIZE = 68; // 4B len prefix + 64B expanded URL string
   constexpr size_t CACHE_LINES_PER_URL =
       (EXTENDED_URL_SIZE + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
   constexpr size_t SLOT_SIZE = CACHE_LINES_PER_URL * CACHE_LINE_SIZE;
@@ -272,10 +284,17 @@ void UrlShortenBusinessLogic::serializeExtendedUrlsResponse(
 
   resp_buf_offset_ = slot_offset;
   resp_buf_size_ = slot_offset;
-  #ifndef ENABLE_CEREBELLUM // Write at the end to help non-Cerebellum (SW) path read the count
-    *reinterpret_cast<int32_t*>(resp_buf_ + slot_offset) = static_cast<int32_t>(extended_urls.size());
-    resp_buf_size_ = slot_offset + sizeof(int32_t);
-  #endif
+#else
+  // SW path: packed sequential layout so callSWSendBuf / readString
+  // can iterate without skipping slot gaps.
+  size_t write_offset = 0;
+  for (const auto& url : extended_urls) {
+    writeStringToBuffer(resp_buf_, write_offset, url);
+  }
+  *reinterpret_cast<int32_t*>(resp_buf_ + write_offset) = static_cast<int32_t>(extended_urls.size());
+  resp_buf_offset_ = write_offset;
+  resp_buf_size_ = write_offset + sizeof(int32_t);
+#endif
 }
 #endif // ENABLE_GEM5
 

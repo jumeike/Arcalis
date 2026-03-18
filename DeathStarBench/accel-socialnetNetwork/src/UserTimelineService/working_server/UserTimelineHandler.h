@@ -1,7 +1,6 @@
 #ifndef SOCIAL_NETWORK_MICROSERVICES_SRC_USERTIMELINESERVICE_USERTIMELINEHANDLER_H_
 #define SOCIAL_NETWORK_MICROSERVICES_SRC_USERTIMELINESERVICE_USERTIMELINEHANDLER_H_
 
-#include <chrono>
 #include <atomic>
 #include <memory>
 #include <map>
@@ -14,11 +13,7 @@
 
 namespace social_network {
 
-#ifdef ENABLE_GEM5
-class UserTimelineHandler : public social_network::UserTimelineServiceIf {
-#else
 class UserTimelineHandler : public UserTimelineServiceIf {
-#endif
  public:
   UserTimelineHandler();
   ~UserTimelineHandler() override = default;
@@ -38,22 +33,8 @@ class UserTimelineHandler : public UserTimelineServiceIf {
   void GetRpcMetrics(std::map<std::string, int64_t>& metrics) const;
   void GetBusinessMetrics(std::map<std::string, int64_t>& metrics) const;
 
-#ifdef ENABLE_GEM5
-  void setRecvBuffer(uint8_t* buf);
-  bool isReadyForRequest() const { return ready_for_request_; }
-
-  std::vector<Post> current_posts_;
-  bool success_{false};
-  int operation_type_{-1};  // 0=WriteUserTimeline, 1=ReadUserTimeline
-#endif // ENABLE_GEM5
-
  private:
   UserTimelineBusinessLogic* business_logic_{nullptr};
-
-#ifdef ENABLE_GEM5
-  bool ready_for_request_{false};
-  uint8_t* recv_buffer_{nullptr};
-#endif // ENABLE_GEM5
   
   // RPC layer metrics
   mutable std::mutex _metrics_mutex;

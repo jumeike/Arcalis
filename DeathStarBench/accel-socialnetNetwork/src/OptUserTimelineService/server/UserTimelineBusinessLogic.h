@@ -1,10 +1,6 @@
 #ifndef SOCIAL_NETWORK_MICROSERVICES_USERTIMELINEBUSINESSLOGIC_H
 #define SOCIAL_NETWORK_MICROSERVICES_USERTIMELINEBUSINESSLOGIC_H
 
-#include <bson/bson.h>
-#include <mongoc.h>
-#include <sw/redis++/redis++.h>
-
 #include <atomic>
 #include <map>
 #include <vector>
@@ -32,6 +28,7 @@
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TSocket.h>
 #include "PacketReplaySocket.h"
+// #include <gem5/m5ops.h>
 #endif // ENABLE_GEM5
 
 #ifdef ENABLE_GEM5_TEST
@@ -44,23 +41,16 @@
 #include "../../ThriftClient.h"
 #include "../../logger.h"
 
-using namespace sw::redis;
-
 namespace social_network {
 
 class UserTimelineHandler;
 
 class UserTimelineBusinessLogic {
  public:
-  UserTimelineBusinessLogic(Redis* redis_pool, mongoc_client_pool_t* mongodb_pool,
-                           ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool);
-
-  UserTimelineBusinessLogic(Redis* redis_replica_pool, Redis* redis_primary_pool, 
-                           mongoc_client_pool_t* mongodb_pool,
-                           ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool);
-
-  UserTimelineBusinessLogic(RedisCluster* redis_cluster_pool, mongoc_client_pool_t* mongodb_pool,
-                           ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool);
+    UserTimelineBusinessLogic(
+        ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool,
+        void* unused_pool_2,
+        void* unused_pool_3);
 
 #ifdef ENABLE_GEM5
     ~UserTimelineBusinessLogic();
@@ -94,12 +84,9 @@ class UserTimelineBusinessLogic {
 #endif // ENABLE_GEM5
 
  private:
-  Redis* _redis_client_pool;
-  Redis* _redis_replica_pool;
-  Redis* _redis_primary_pool;
-  RedisCluster* _redis_cluster_client_pool;
-  mongoc_client_pool_t* _mongodb_client_pool;
-  ClientPool<ThriftClient<PostStorageServiceClient>>* _post_client_pool;
+     ClientPool<ThriftClient<PostStorageServiceClient>>* _post_client_pool;
+    void* _unused_pool_2;
+    void* _unused_pool_3;
 
   // Metrics (using atomics for thread safety)
   mutable std::mutex _metrics_mutex;
@@ -116,9 +103,8 @@ class UserTimelineBusinessLogic {
   std::atomic<uint64_t> _post_service_time_ns{0};
 
   // Helper functions
-  bool IsRedisReplicationEnabled();
-  void UpdateRedisTimeline(const std::string& user_id, const std::string& post_id, 
-                          double timestamp, UpdateType update_type = UpdateType::NOT_EXIST);
+    void UpdateRedisTimeline(const std::string& user_id, const std::string& post_id,
+                                                    double timestamp);
   void UpdateRedisTimeline(const std::string& user_id, 
                           const std::unordered_map<std::string, double>& post_score_map);
   std::vector<std::string> GetTimelineFromRedis(const std::string& user_id, int start, int stop);

@@ -5,7 +5,6 @@
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TServerSocket.h>
 #include <thrift/transport/TServerUDPSocket.h>
-#include <thrift/transport/TSocket.h>
 
 #include <boost/program_options.hpp>
 
@@ -19,26 +18,6 @@
 #include "../../utils_thrift.h"
 #include "UserTimelineHandler.h"
 #include "UserTimelineBusinessLogic.h"
-
-#ifdef ENABLE_TRACING
-#include "PacketLogger.h"
-#endif
-
-#ifdef ENABLE_GEM5_TEST
-#pragma message("Compiling with gem5 instructions")
-#include <gem5/m5ops.h>
-#include "m5_mmap.h"
-#endif // ENABLE_GEM5_TEST
-
-#ifdef ENABLE_CEREBELLUM
-#pragma message("Compiling with cerebellum")
-#include "cerebellum_job.h"
-#include "cerebellum_manager.h"
-CerebellumManagerFactory factory = CerebellumManagerFactory();
-auto cerebellum_manager = factory.getManager();
-uint64_t* sendAddress = nullptr;
-uint64_t* readAddress = nullptr;
-#endif // ENABLE_CEREBELLUM
 
 using apache::thrift::protocol::TBinaryProtocolFactory;
 using apache::thrift::server::TThreadedServer;
@@ -64,20 +43,10 @@ int main(int argc, char *argv[]) {
   // Command line options
   namespace po = boost::program_options;
   po::options_description desc("Options");
-  desc.add_options()
-      ("help", "produce help message")
-      ("redis-cluster",
-       po::value<bool>()->default_value(false)->implicit_value(true),
-       "Enable redis cluster mode")
-#ifdef ENABLE_GEM5
-      ("trace-file",
-       po::value<std::string>(),
-       "Trace file to replay")
-      ("num-requests",
-       po::value<int>(),
-       "Number of requests to process")
-#endif
-      ;
+  desc.add_options()("help", "produce help message")(
+      "redis-cluster",
+      po::value<bool>()->default_value(false)->implicit_value(true),
+      "Enable redis cluster mode");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -87,28 +56,6 @@ int main(int argc, char *argv[]) {
     std::cout << desc << "\n";
     return 0;
   }
-
-#ifdef ENABLE_GEM5
-  std::string trace_file = "usertimeline_traces/dpdk_to_rpc.bin";
-  int num_requests = -1;
-
-  if (vm.count("trace-file")) {
-    trace_file = vm["trace-file"].as<std::string>();
-  }
-  if (vm.count("num-requests")) {
-    num_requests = vm["num-requests"].as<int>();
-  }
-
-  LOG(info) << "Trace file: " << trace_file;
-  if (num_requests > 0) {
-    LOG(info) << "Max requests: " << num_requests;
-  }
-  apache::thrift::transport::TSocket::setTraceConfig(trace_file, num_requests);
-#endif // ENABLE_GEM5
-
-#ifdef ENABLE_TRACING
-  PacketLogger::getInstance().initializeLogFiles("usertimeline_traces", true);
-#endif
 
   bool redis_cluster_flag = false;
   if (vm.count("redis-cluster")) {
@@ -218,55 +165,18 @@ int main(int argc, char *argv[]) {
   auto handler = std::make_shared<UserTimelineHandler>();
   std::unique_ptr<UserTimelineBusinessLogic> business_logic;
 
-#ifdef ENABLE_GEM5_TEST
-  map_m5_mem();
-#endif
-
   if (redis_cluster_flag || redis_cluster_config_flag) {
     RedisCluster redis_client_pool = init_redis_cluster_client_pool(config_json, "user-timeline");
     business_logic = std::make_unique<UserTimelineBusinessLogic>(
         &redis_client_pool, mongodb_client_pool, &post_storage_client_pool);
     handler->setBusinessLogic(business_logic.get());
 
-#ifdef ENABLE_GEM5
-    handler->setRecvBuffer(business_logic->getRecvBuffer());
-    if (handler->isReadyForRequest()) {
-      LOG(info) << "Handler ready for accelerator communication";
-    }
-#endif // ENABLE_GEM5
-
-#ifdef ENABLE_GEM5_TEST
-    m5_work_begin_addr(0, 0);
-#ifdef ENABLE_CEREBELLUM
-    CerebellumManagerFactory::waitingTillMSRReady();
-    std::cout << "MSR ready \n";
-    cerebellum_manager->sendJobMSR(CerebellumJob());
-
-    uint64_t cpuid = 0;
-    auto add = cerebellum_manager->getAddress(cpuid);
-    sendAddress = add.first;
-    readAddress = add.second;
-
-    uint64_t num_init_commands = 0;
-    *sendAddress = num_init_commands;
-    volatile uint64_t temp0 = *readAddress;
-    (void)temp0;
-
-    business_logic->setAddresses(sendAddress, readAddress);
-#endif // ENABLE_CEREBELLUM
-#endif // ENABLE_GEM5_TEST
-
-#ifdef ENABLE_GEM5
-    TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
-                         server_socket,
-                         std::make_shared<TBufferedTransportFactory>(),
-                         std::make_shared<TBinaryProtocolFactory>());
-#else
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
-                           std::make_shared<TBufferedTransportFactory>(),
+                          //  std::make_shared<TFramedTransportFactory>(),
+                          std::make_shared<TBufferedTransportFactory>(), 
                           std::make_shared<TBinaryProtocolFactory>());
-#endif
     LOG(info) << "Starting the user-timeline-service server with Redis Cluster support...";
     server.serve();
   }
@@ -277,46 +187,12 @@ int main(int argc, char *argv[]) {
         &redis_replica_client_pool, &redis_primary_client_pool, mongodb_client_pool, &post_storage_client_pool);
     handler->setBusinessLogic(business_logic.get());
 
-  #ifdef ENABLE_GEM5
-    handler->setRecvBuffer(business_logic->getRecvBuffer());
-    if (handler->isReadyForRequest()) {
-      LOG(info) << "Handler ready for accelerator communication";
-    }
-  #endif // ENABLE_GEM5
-
-  #ifdef ENABLE_GEM5_TEST
-    m5_work_begin_addr(0, 0);
-  #ifdef ENABLE_CEREBELLUM
-    CerebellumManagerFactory::waitingTillMSRReady();
-    std::cout << "MSR ready \n";
-    cerebellum_manager->sendJobMSR(CerebellumJob());
-
-    uint64_t cpuid = 0;
-    auto add = cerebellum_manager->getAddress(cpuid);
-    sendAddress = add.first;
-    readAddress = add.second;
-
-    uint64_t num_init_commands = 0;
-    *sendAddress = num_init_commands;
-    volatile uint64_t temp0 = *readAddress;
-    (void)temp0;
-
-    business_logic->setAddresses(sendAddress, readAddress);
-  #endif // ENABLE_CEREBELLUM
-  #endif // ENABLE_GEM5_TEST
-
-  #ifdef ENABLE_GEM5
-    TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
-               server_socket,
-               std::make_shared<TBufferedTransportFactory>(),
-               std::make_shared<TBinaryProtocolFactory>());
-  #else
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
                           //  std::make_shared<TFramedTransportFactory>(),
                            std::make_shared<TBufferedTransportFactory>(),
                            std::make_shared<TBinaryProtocolFactory>());
-  #endif
     LOG(info) << "Starting the user-timeline-service server with replicated Redis support...";
     server.serve();
   }
@@ -326,53 +202,15 @@ int main(int argc, char *argv[]) {
         &redis_client_pool, mongodb_client_pool, &post_storage_client_pool);
     handler->setBusinessLogic(business_logic.get());
 
-#ifdef ENABLE_GEM5
-    handler->setRecvBuffer(business_logic->getRecvBuffer());
-    if (handler->isReadyForRequest()) {
-      LOG(info) << "Handler ready for accelerator communication";
-    }
-#endif // ENABLE_GEM5
-
-#ifdef ENABLE_GEM5_TEST
-    m5_work_begin_addr(0, 0);
-#ifdef ENABLE_CEREBELLUM
-    CerebellumManagerFactory::waitingTillMSRReady();
-    std::cout << "MSR ready \n";
-    cerebellum_manager->sendJobMSR(CerebellumJob());
-
-    uint64_t cpuid = 0;
-    auto add = cerebellum_manager->getAddress(cpuid);
-    sendAddress = add.first;
-    readAddress = add.second;
-
-    uint64_t num_init_commands = 0;
-    *sendAddress = num_init_commands;
-    volatile uint64_t temp0 = *readAddress;
-    (void)temp0;
-
-    business_logic->setAddresses(sendAddress, readAddress);
-#endif // ENABLE_CEREBELLUM
-#endif // ENABLE_GEM5_TEST
-
-#ifdef ENABLE_GEM5
-    TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
-                         server_socket,
-                         std::make_shared<TBufferedTransportFactory>(),
-                         std::make_shared<TBinaryProtocolFactory>());
-#else
     TThreadedServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
+    // TSimpleServer server(std::make_shared<UserTimelineServiceProcessor>(handler),
                            server_socket,
                           //  std::make_shared<TFramedTransportFactory>(),
                           std::make_shared<TBufferedTransportFactory>(),
                            std::make_shared<TBinaryProtocolFactory>());
-#endif
     LOG(info) << "Starting the user-timeline-service server on port " << port <<"...";
     server.serve();
   }
-
-#ifdef ENABLE_GEM5_TEST
-  unmap_m5_mem();
-#endif
 
   return 0;
 }

@@ -132,6 +132,40 @@ int main(int argc, char* argv[]) {
 
   LOG(info) << "MongoDB index created successfully";
 
+  // Clear existing MongoDB content to avoid duplicate-key conflicts during replay.
+  mongoc_client_t* cleanup_client = mongoc_client_pool_pop(mongodb_client_pool);
+  if (cleanup_client) {
+    auto collection = mongoc_client_get_collection(cleanup_client, "url-shorten", "url-shorten");
+    if (collection) {
+      bson_t* empty_filter = bson_new();
+      bson_error_t error;
+      bool deleted = mongoc_collection_delete_many(collection, empty_filter, nullptr, nullptr, &error);
+      if (deleted) {
+        LOG(info) << "Cleared existing URLs from MongoDB";
+      } else {
+        LOG(warning) << "Failed to clear MongoDB collection: " << error.message;
+      }
+      bson_destroy(empty_filter);
+      mongoc_collection_destroy(collection);
+    }
+    mongoc_client_pool_push(mongodb_client_pool, cleanup_client);
+  }
+
+  // Clear existing Memcached content for deterministic replay behavior.
+  memcached_return_t memcached_rc;
+  memcached_st* cleanup_memcached =
+      memcached_pool_pop(memcached_client_pool, true, &memcached_rc);
+  if (cleanup_memcached) {
+    memcached_rc = memcached_flush(cleanup_memcached, 0);
+    if (memcached_rc == MEMCACHED_SUCCESS) {
+      LOG(info) << "Cleared existing URLs from Memcached";
+    } else {
+      LOG(warning) << "Failed to clear Memcached: "
+                   << memcached_strerror(cleanup_memcached, memcached_rc);
+    }
+    memcached_pool_push(memcached_client_pool, cleanup_memcached);
+  }
+
 #ifdef ENABLE_GEM5_TEST
   map_m5_mem();
 #endif

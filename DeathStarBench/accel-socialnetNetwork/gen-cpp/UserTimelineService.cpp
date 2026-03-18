@@ -6,6 +6,11 @@
  */
 #include "UserTimelineService.h"
 
+#ifdef ENABLE_GEM5
+// #include "../src/UserTimelineService/server/UserTimelineHandler.h"
+#include "../src/OptUserTimelineService/server/UserTimelineHandler.h"
+#endif
+
 namespace social_network {
 
 
@@ -18,6 +23,28 @@ UserTimelineService_WriteUserTimeline_args::UserTimelineService_WriteUserTimelin
      user_id(0),
      timestamp(0) {
 }
+
+#ifdef ENABLE_GEM5
+UserTimelineService_WriteUserTimeline_args::UserTimelineService_WriteUserTimeline_args(const UserTimelineService_WriteUserTimeline_args& other)
+    : req_id(other.req_id),
+      post_id(other.post_id),
+      user_id(other.user_id),
+      timestamp(other.timestamp),
+      carrier(other.carrier),
+      __isset(other.__isset) {}
+
+UserTimelineService_WriteUserTimeline_args& UserTimelineService_WriteUserTimeline_args::operator=(const UserTimelineService_WriteUserTimeline_args& other) {
+  if (this != &other) {
+    req_id = other.req_id;
+    post_id = other.post_id;
+    user_id = other.user_id;
+    timestamp = other.timestamp;
+    carrier = other.carrier;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
 
 uint32_t UserTimelineService_WriteUserTimeline_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -197,6 +224,19 @@ UserTimelineService_WriteUserTimeline_result::~UserTimelineService_WriteUserTime
 UserTimelineService_WriteUserTimeline_result::UserTimelineService_WriteUserTimeline_result() noexcept {
 }
 
+#ifdef ENABLE_GEM5
+UserTimelineService_WriteUserTimeline_result::UserTimelineService_WriteUserTimeline_result(const UserTimelineService_WriteUserTimeline_result& other)
+    : se(other.se), __isset(other.__isset) {}
+
+UserTimelineService_WriteUserTimeline_result& UserTimelineService_WriteUserTimeline_result::operator=(const UserTimelineService_WriteUserTimeline_result& other) {
+  if (this != &other) {
+    se = other.se;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
+
 uint32_t UserTimelineService_WriteUserTimeline_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   ::apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -310,6 +350,28 @@ UserTimelineService_ReadUserTimeline_args::UserTimelineService_ReadUserTimeline_
      start(0),
      stop(0) {
 }
+
+#ifdef ENABLE_GEM5
+UserTimelineService_ReadUserTimeline_args::UserTimelineService_ReadUserTimeline_args(const UserTimelineService_ReadUserTimeline_args& other)
+    : req_id(other.req_id),
+      user_id(other.user_id),
+      start(other.start),
+      stop(other.stop),
+      carrier(other.carrier),
+      __isset(other.__isset) {}
+
+UserTimelineService_ReadUserTimeline_args& UserTimelineService_ReadUserTimeline_args::operator=(const UserTimelineService_ReadUserTimeline_args& other) {
+  if (this != &other) {
+    req_id = other.req_id;
+    user_id = other.user_id;
+    start = other.start;
+    stop = other.stop;
+    carrier = other.carrier;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
 
 uint32_t UserTimelineService_ReadUserTimeline_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -488,6 +550,20 @@ UserTimelineService_ReadUserTimeline_result::~UserTimelineService_ReadUserTimeli
 
 UserTimelineService_ReadUserTimeline_result::UserTimelineService_ReadUserTimeline_result() noexcept {
 }
+
+#ifdef ENABLE_GEM5
+UserTimelineService_ReadUserTimeline_result::UserTimelineService_ReadUserTimeline_result(const UserTimelineService_ReadUserTimeline_result& other)
+    : success(other.success), se(other.se), __isset(other.__isset) {}
+
+UserTimelineService_ReadUserTimeline_result& UserTimelineService_ReadUserTimeline_result::operator=(const UserTimelineService_ReadUserTimeline_result& other) {
+  if (this != &other) {
+    success = other.success;
+    se = other.se;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
 
 uint32_t UserTimelineService_ReadUserTimeline_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -788,6 +864,115 @@ bool UserTimelineServiceProcessor::dispatchCall(::apache::thrift::protocol::TPro
   return true;
 }
 
+#ifdef ENABLE_GEM5
+bool UserTimelineServiceProcessor::process(
+    std::shared_ptr<apache::thrift::protocol::TProtocol> in,
+    std::shared_ptr<apache::thrift::protocol::TProtocol> out,
+    void* connectionContext) {
+  auto handler = std::dynamic_pointer_cast<UserTimelineHandler>(iface_);
+  if (!handler || !handler->getBusinessLogic()) {
+    return false;
+  }
+  handler->getBusinessLogic()->runLoop(this, in, out, connectionContext);
+  return true;
+}
+
+void UserTimelineServiceProcessor::process_WriteUserTimeline(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+{
+  void* ctx = nullptr;
+  if (this->eventHandler_.get() != nullptr) {
+    ctx = this->eventHandler_->getContext("UserTimelineService.WriteUserTimeline", callContext);
+  }
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "UserTimelineService.WriteUserTimeline");
+
+  auto handler = std::dynamic_pointer_cast<UserTimelineHandler>(iface_);
+  auto* bl = handler ? handler->getBusinessLogic() : nullptr;
+  if (!bl) {
+    ::apache::thrift::TApplicationException x("UserTimeline business logic not set");
+    oprot->writeMessageBegin("WriteUserTimeline", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+    x.write(oprot);
+    oprot->writeMessageEnd();
+    oprot->getTransport()->writeEnd();
+    oprot->getTransport()->flush();
+    return;
+  }
+  bl->ctx_ = ctx;
+
+  UserTimelineService_WriteUserTimeline_result result;
+  try {
+    iface_->WriteUserTimeline(bl->write_args_.req_id,
+                              bl->write_args_.post_id,
+                              bl->write_args_.user_id,
+                              bl->write_args_.timestamp,
+                              bl->write_args_.carrier);
+  } catch (ServiceException &se) {
+    result.se = se;
+    result.__isset.se = true;
+  } catch (const std::exception& e) {
+    if (this->eventHandler_.get() != nullptr) {
+      this->eventHandler_->handlerError(ctx, "UserTimelineService.WriteUserTimeline");
+    }
+    ::apache::thrift::TApplicationException x(e.what());
+    oprot->writeMessageBegin("WriteUserTimeline", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+    x.write(oprot);
+    oprot->writeMessageEnd();
+    oprot->getTransport()->writeEnd();
+    oprot->getTransport()->flush();
+    return;
+  }
+
+  bl->write_result_ = result; // Store result for callSWwrite()
+}
+
+void UserTimelineServiceProcessor::process_ReadUserTimeline(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+{
+  void* ctx = nullptr;
+  if (this->eventHandler_.get() != nullptr) {
+    ctx = this->eventHandler_->getContext("UserTimelineService.ReadUserTimeline", callContext);
+  }
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "UserTimelineService.ReadUserTimeline");
+
+  auto handler = std::dynamic_pointer_cast<UserTimelineHandler>(iface_);
+  auto* bl = handler ? handler->getBusinessLogic() : nullptr;
+  if (!bl) {
+    ::apache::thrift::TApplicationException x("UserTimeline business logic not set");
+    oprot->writeMessageBegin("ReadUserTimeline", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+    x.write(oprot);
+    oprot->writeMessageEnd();
+    oprot->getTransport()->writeEnd();
+    oprot->getTransport()->flush();
+    return;
+  }
+  bl->ctx_ = ctx;
+
+  UserTimelineService_ReadUserTimeline_result result;
+  try {
+    iface_->ReadUserTimeline(result.success,
+                             bl->read_args_.req_id,
+                             bl->read_args_.user_id,
+                             bl->read_args_.start,
+                             bl->read_args_.stop,
+                             bl->read_args_.carrier);
+    result.__isset.success = true;
+  } catch (ServiceException &se) {
+    result.se = se;
+    result.__isset.se = true;
+  } catch (const std::exception& e) {
+    if (this->eventHandler_.get() != nullptr) {
+      this->eventHandler_->handlerError(ctx, "UserTimelineService.ReadUserTimeline");
+    }
+    ::apache::thrift::TApplicationException x(e.what());
+    oprot->writeMessageBegin("ReadUserTimeline", ::apache::thrift::protocol::T_EXCEPTION, seqid);
+    x.write(oprot);
+    oprot->writeMessageEnd();
+    oprot->getTransport()->writeEnd();
+    oprot->getTransport()->flush();
+    return;
+  }
+
+  bl->read_result_ = result; // Store result for callSWwrite()
+}
+#else
 void UserTimelineServiceProcessor::process_WriteUserTimeline(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = nullptr;
@@ -900,6 +1085,7 @@ void UserTimelineServiceProcessor::process_ReadUserTimeline(int32_t seqid, ::apa
     this->eventHandler_->postWrite(ctx, "UserTimelineService.ReadUserTimeline", bytes);
   }
 }
+#endif
 
 ::std::shared_ptr< ::apache::thrift::TProcessor > UserTimelineServiceProcessorFactory::getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) {
   ::apache::thrift::ReleaseHandler< UserTimelineServiceIfFactory > cleanup(handlerFactory_);

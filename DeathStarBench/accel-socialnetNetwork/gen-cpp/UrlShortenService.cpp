@@ -7,8 +7,8 @@
 #include "UrlShortenService.h"
 
 #ifdef ENABLE_GEM5
-#include "../src/OptUrlShortenService/server/UrlShortenHandler.h"
-//#include "../src/UrlShortenService/server/UrlShortenHandler.h"
+//#include "../src/OptUrlShortenService/server/UrlShortenHandler.h"
+#include "../src/UrlShortenService/server/UrlShortenHandler.h"
 #endif
 
 namespace social_network {
@@ -20,6 +20,21 @@ UrlShortenService_ComposeUrls_args::~UrlShortenService_ComposeUrls_args() noexce
 UrlShortenService_ComposeUrls_args::UrlShortenService_ComposeUrls_args() noexcept
    : req_id(0) {
 }
+
+#ifdef ENABLE_GEM5
+UrlShortenService_ComposeUrls_args::UrlShortenService_ComposeUrls_args(const UrlShortenService_ComposeUrls_args& other)
+  : req_id(other.req_id), urls(other.urls), carrier(other.carrier), __isset(other.__isset) {}
+
+UrlShortenService_ComposeUrls_args& UrlShortenService_ComposeUrls_args::operator=(const UrlShortenService_ComposeUrls_args& other) {
+  if (this != &other) {
+    req_id = other.req_id;
+    urls = other.urls;
+    carrier = other.carrier;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
 
 uint32_t UrlShortenService_ComposeUrls_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -371,6 +386,21 @@ UrlShortenService_GetExtendedUrls_args::~UrlShortenService_GetExtendedUrls_args(
 UrlShortenService_GetExtendedUrls_args::UrlShortenService_GetExtendedUrls_args() noexcept
    : req_id(0) {
 }
+
+#ifdef ENABLE_GEM5
+UrlShortenService_GetExtendedUrls_args::UrlShortenService_GetExtendedUrls_args(const UrlShortenService_GetExtendedUrls_args& other)
+  : req_id(other.req_id), shortened_urls(other.shortened_urls), carrier(other.carrier), __isset(other.__isset) {}
+
+UrlShortenService_GetExtendedUrls_args& UrlShortenService_GetExtendedUrls_args::operator=(const UrlShortenService_GetExtendedUrls_args& other) {
+  if (this != &other) {
+    req_id = other.req_id;
+    shortened_urls = other.shortened_urls;
+    carrier = other.carrier;
+    __isset = other.__isset;
+  }
+  return *this;
+}
+#endif
 
 uint32_t UrlShortenService_GetExtendedUrls_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -901,7 +931,7 @@ void UrlShortenServiceProcessor::process_ComposeUrls(int32_t seqid, ::apache::th
        return;
    }
 
-   bl->compose_result_ = result;
+   bl->compose_result_ = result; // Store result for callSWwrite()
 }
 
 void UrlShortenServiceProcessor::process_GetExtendedUrls(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
@@ -935,7 +965,7 @@ void UrlShortenServiceProcessor::process_GetExtendedUrls(int32_t seqid, ::apache
        return;
    }
 
-   bl->get_result_ = result;
+   bl->get_result_ = result; // Store result for callSWwrite()
 }
 #else
 void UrlShortenServiceProcessor::process_ComposeUrls(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)

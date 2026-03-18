@@ -4,3 +4,6 @@ DeathStarBench/.git/
 *.csv
 cloudlab-vtune-results/
 NMAcc-mt/
+app_to_rpc*
+rpc_to_app*
+*traces_bkp

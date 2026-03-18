@@ -6,18 +6,6 @@ UserTimelineHandler::UserTimelineHandler() {
   LOG(info) << "UserTimelineHandler initialized";
 }
 
-#ifdef ENABLE_GEM5
-void UserTimelineHandler::setRecvBuffer(uint8_t* buf) {
-  recv_buffer_ = buf;
-  ready_for_request_ = true;
-  if (business_logic_ != nullptr) {
-    business_logic_->setHandler(this);
-  }
-  LOG(debug) << "UserTimelineHandler receive buffer set to: "
-             << std::hex << reinterpret_cast<uintptr_t>(buf);
-}
-#endif // ENABLE_GEM5
-
 void UserTimelineHandler::WriteUserTimeline(
     int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
     const std::map<std::string, std::string>& carrier) {
@@ -28,21 +16,7 @@ void UserTimelineHandler::WriteUserTimeline(
   
   // Delegate to business logic
   if (business_logic_ != nullptr) {
-#ifdef ENABLE_GEM5
-    operation_type_ = 0;
-    success_ = false;
-
-    uint8_t* buf = business_logic_->getRecvBuffer();
-    *reinterpret_cast<int64_t*>(buf + 0) = req_id;
-    *reinterpret_cast<int32_t*>(buf + 8) = 0;
-    *reinterpret_cast<int64_t*>(buf + 12) = post_id;
-    *reinterpret_cast<int64_t*>(buf + 20) = user_id;
-    *reinterpret_cast<int64_t*>(buf + 28) = timestamp;
-
-    business_logic_->WriteUserTimeline();
-#else
     business_logic_->WriteUserTimeline(req_id, post_id, user_id, timestamp, carrier);
-#endif
   } else {
     LOG(error) << "Business logic not set for WriteUserTimeline request " << req_id;
     ServiceException se;
@@ -84,22 +58,7 @@ void UserTimelineHandler::ReadUserTimeline(
 
   // Delegate to business logic
   if (business_logic_ != nullptr) {
-#ifdef ENABLE_GEM5
-    operation_type_ = 1;
-    success_ = false;
-    current_posts_.clear();
-
-    uint8_t* buf = business_logic_->getRecvBuffer();
-    *reinterpret_cast<int64_t*>(buf + 0) = req_id;
-    *reinterpret_cast<int32_t*>(buf + 8) = 1;
-    *reinterpret_cast<int64_t*>(buf + 12) = user_id;
-    *reinterpret_cast<int32_t*>(buf + 20) = start;
-    *reinterpret_cast<int32_t*>(buf + 24) = stop;
-
-    business_logic_->ReadUserTimeline();
-#else
     business_logic_->ReadUserTimeline(_return, req_id, user_id, start, stop, carrier);
-#endif
   } else {
     LOG(error) << "Business logic not set for ReadUserTimeline request " << req_id;
     ServiceException se;
@@ -107,12 +66,6 @@ void UserTimelineHandler::ReadUserTimeline(
     se.message = "Business logic not initialized";
     throw se;
   }
-
-#ifdef ENABLE_GEM5
-  if (success_) {
-    _return = current_posts_;
-  }
-#endif
 
   // Process outgoing RPC (response preparation, tracing completion)
   ProcessOutgoingRpc();

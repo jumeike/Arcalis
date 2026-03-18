@@ -62,6 +62,7 @@ TestMetrics global_metrics;
 // Global operation weights
 float global_write_weight = 0.5f;
 float global_read_weight = 0.5f;
+constexpr int kFixedReadCount = 3;
 // Helper function to create a sample post with fixed-length strings
 Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     Post post;
@@ -80,7 +81,7 @@ Post createSamplePost(int64_t post_id, int64_t req_id, int thread_id) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> post_type_dist(0, 3);
-    post.post_type = static_cast<PostType::type>(post_type_dist(gen)); //PostType::POST;
+    post.post_type = static_cast<PostType::type>(post_type_dist(gen));
  
     // Creator with fixed-length username (16 chars)
     post.creator.user_id = thread_id + 1000;
@@ -194,18 +195,18 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         std::mt19937 gen(rd());
         // std::uniform_int_distribution<> operation_dist(0, 1); // 0=write, 1=read
         std::uniform_real_distribution<float> operation_dist(0.0f, 1.0f);
-        std::uniform_int_distribution<> user_dist(1, 100); // User IDs 1-100
-        std::uniform_int_distribution<> read_size_dist(5, 20); // Timeline read size
-        
-        std::vector<std::pair<int64_t, int64_t>> written_posts; // (user_id, post_id)
+        const int64_t fixed_user_id = (thread_id % 100) + 1;
+
+        int local_created_posts = 0;
         
         // Warmup phase - create posts and timeline entries
         for (int i = 0; i < warmup_operations; i++) {
             std::map<std::string, std::string> carrier;
-            carrier["trace-id"] = "warmup-" + std::to_string(thread_id) + "-" + std::to_string(i);
+            carrier["trace-id"] = "test-0000-0000";
+            carrier["span-id"] = "00";
             
             try {
-                int64_t user_id = user_dist(gen);
+                int64_t user_id = fixed_user_id;
                 uint64_t post_id = generateUniquePostId(thread_id);
                 int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
@@ -216,7 +217,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                 
                 // Then add to user's timeline
                 timeline_client.WriteUserTimeline(i, post_id, user_id, timestamp, carrier);
-                written_posts.emplace_back(user_id, post_id);
+                local_created_posts++;
             } catch (const TException& e) {
                 if (verbose) {
                     std::cerr << "Warmup error in thread " << thread_id << ": " << e.what() << std::endl;
@@ -226,7 +227,7 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         
         if (verbose) {
             std::cout << "Thread " << thread_id << " completed warmup, created " 
-                      << written_posts.size() << " posts and timeline entries" << std::endl;
+                      << local_created_posts << " posts and timeline entries" << std::endl;
         }
         
         // Measurement phase
@@ -246,21 +247,21 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
             auto start_time = std::chrono::high_resolution_clock::now();
             
             try {
-                if (operation == 0 || written_posts.empty()) {
+                if (operation == 0) {
                     // Write timeline operation (create post first)
-                    int64_t user_id = user_dist(gen);
+                    int64_t user_id = fixed_user_id;
                     uint64_t post_id = generateUniquePostId(thread_id);
                     int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     
                     // Create post in PostStorage first
-                    Post post = createSamplePost(post_id, thread_id * 10000 + i, thread_id);
-                    post_client.StorePost(thread_id * 10000 + i, post, carrier);
+                    Post post = createSamplePost(post_id, thread_id * 1000 + i, thread_id);
+                    post_client.StorePost(thread_id * 1000 + i, post, carrier);
                     global_metrics.post_store_operations++;
                     
                     // Then add to timeline
-                    timeline_client.WriteUserTimeline(thread_id * 10000 + i, post_id, user_id, timestamp, carrier);
-                    written_posts.emplace_back(user_id, post_id);
+                    timeline_client.WriteUserTimeline(thread_id * 1000 + i, post_id, user_id, timestamp, carrier);
+                    local_created_posts++;
                     global_metrics.write_operations++;
                     
                     if (verbose && i % 100 == 0) {
@@ -270,13 +271,12 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
                     
                 } else {
                     // Read timeline operation
-                    int idx = gen() % written_posts.size();
-                    int64_t user_id = written_posts[idx].first;
+                    int64_t user_id = fixed_user_id;
                     int start = 0;
-                    int stop = read_size_dist(gen);
+                    int stop = kFixedReadCount;
                     
                     std::vector<Post> results;
-                    timeline_client.ReadUserTimeline(results, thread_id * 100000 + i, user_id, start, stop, carrier);
+                    timeline_client.ReadUserTimeline(results, thread_id * 1000 + i, user_id, start, stop, carrier);
                     global_metrics.read_operations++;
                     
                     if (verbose && i % 100 == 0) {
@@ -310,7 +310,8 @@ void client_thread(int thread_id, const std::string& server_host, int server_por
         
         if (verbose) {
             std::cout << "Thread " << thread_id << " completed, created " 
-                      << written_posts.size() << " total posts and timeline entries" << std::endl;
+                      << local_created_posts
+                      << " total posts and timeline entries" << std::endl;
         }
         
     } catch (const TException& e) {
@@ -404,7 +405,7 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) warmup_operations = std::stoi(argv[++i]);
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
-        } else if (arg == "-ww" || arg == "--write-weight") {
+        } else if (arg == "-ww" || arg == "-sw" || arg == "--write-weight") {
             if (i + 1 < argc) write_weight = std::stof(argv[++i]);
         } else if (arg == "-rw" || arg == "--read-weight") {
             if (i + 1 < argc) read_weight = std::stof(argv[++i]);

@@ -2,6 +2,28 @@
 #include "UrlShortenHandler.h"
 #include <future>
 #include <cstring>
+#include <array>
+
+namespace {
+std::string makeDeterministicShortUrl(const std::string& expanded_url) {
+  // FNV-1a 64-bit hash for stable cross-run short URL generation.
+  uint64_t h = 1469598103934665603ULL;
+  for (unsigned char c : expanded_url) {
+    h ^= static_cast<uint64_t>(c);
+    h *= 1099511628211ULL;
+  }
+
+  static constexpr char kBase62[] =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  std::array<char, 10> token{};
+  for (int i = 9; i >= 0; --i) {
+    token[i] = kBase62[h % 62];
+    h /= 62;
+  }
+
+  return std::string(HOSTNAME) + std::string(token.data(), token.size());
+}
+} // namespace
 
 namespace social_network {
 
@@ -197,27 +219,78 @@ void UrlShortenBusinessLogic::callSWSendBuf() {
 
 #ifdef ENABLE_GEM5
 void UrlShortenBusinessLogic::serializeComposeUrlsResponse(const std::vector<Url>& urls) {
-  size_t offset = 0;
+#ifdef ENABLE_CEREBELLUM
+  // Cerebellum path: cache-line-aligned slots so the accelerator reads each entry
+  // at a predictable 64B-aligned offset.
+  constexpr size_t CACHE_LINE_SIZE = 64;
+  constexpr size_t COMPOSE_URL_SIZE = 31 + 68;
+  constexpr size_t CACHE_LINES_PER_URL =
+      (COMPOSE_URL_SIZE + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+  constexpr size_t SLOT_SIZE = CACHE_LINES_PER_URL * CACHE_LINE_SIZE;
+
+  size_t slot_offset = 0;
   for (const auto& url : urls) {
-    writeUrlToBuffer(resp_buf_, offset, url);
+    size_t write_offset = slot_offset;
+    writeUrlToBuffer(resp_buf_, write_offset, url);
+
+    if (write_offset < slot_offset + SLOT_SIZE) {
+      std::memset(resp_buf_ + write_offset, 0, slot_offset + SLOT_SIZE - write_offset);
+    }
+
+    slot_offset += SLOT_SIZE;
   }
 
-  *reinterpret_cast<int32_t*>(resp_buf_ + offset) = static_cast<int32_t>(urls.size());
-  resp_buf_offset_ = offset;
-  resp_buf_size_ = offset + sizeof(int32_t);
+  resp_buf_offset_ = slot_offset;
+  resp_buf_size_ = slot_offset;
+#else
+  // SW path: packed sequential layout so callSWSendBuf / readUrlFromBuffer
+  // can iterate without skipping slot gaps.
+  size_t write_offset = 0;
+  for (const auto& url : urls) {
+    writeUrlToBuffer(resp_buf_, write_offset, url);
+  }
+  *reinterpret_cast<int32_t*>(resp_buf_ + write_offset) = static_cast<int32_t>(urls.size());
+  resp_buf_offset_ = write_offset;
+  resp_buf_size_ = write_offset + sizeof(int32_t);
+#endif
 }
 
 void UrlShortenBusinessLogic::serializeExtendedUrlsResponse(
     const std::vector<std::string>& extended_urls) {
-  size_t offset = 0;
+#ifdef ENABLE_CEREBELLUM
+  // Cerebellum path: cache-line-aligned slots.
+  constexpr size_t CACHE_LINE_SIZE = 64;
+  constexpr size_t EXTENDED_URL_SIZE = 68;
+  constexpr size_t CACHE_LINES_PER_URL =
+      (EXTENDED_URL_SIZE + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+  constexpr size_t SLOT_SIZE = CACHE_LINES_PER_URL * CACHE_LINE_SIZE;
+
+  size_t slot_offset = 0;
   for (const auto& url : extended_urls) {
-    writeStringToBuffer(resp_buf_, offset, url);
+    size_t write_offset = slot_offset;
+    writeStringToBuffer(resp_buf_, write_offset, url);
+
+    if (write_offset < slot_offset + SLOT_SIZE) {
+      std::memset(resp_buf_ + write_offset, 0, slot_offset + SLOT_SIZE - write_offset);
+    }
+
+    slot_offset += SLOT_SIZE;
   }
 
-  *reinterpret_cast<int32_t*>(resp_buf_ + offset) =
+  resp_buf_offset_ = slot_offset;
+  resp_buf_size_ = slot_offset;
+#else
+  // SW path: packed sequential layout so callSWSendBuf / readString
+  // can iterate without skipping slot gaps.
+  size_t write_offset = 0;
+  for (const auto& url : extended_urls) {
+    writeStringToBuffer(resp_buf_, write_offset, url);
+  }
+  *reinterpret_cast<int32_t*>(resp_buf_ + write_offset) =
       static_cast<int32_t>(extended_urls.size());
-  resp_buf_offset_ = offset;
-  resp_buf_size_ = offset + sizeof(int32_t);
+  resp_buf_offset_ = write_offset;
+  resp_buf_size_ = write_offset + sizeof(int32_t);
+#endif
 }
 #endif // ENABLE_GEM5
 
@@ -398,7 +471,7 @@ void UrlShortenBusinessLogic::ComposeUrls() {
   // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...url strings...]
   size_t offset = 0;
   int64_t req_id    = readInt64(recv_buf_, offset);
-  readInt32(recv_buf_, offset);                      // op_type (0 = ComposeUrls)
+  handler_->operation_type_ = readInt32(recv_buf_, offset); // op_type (0 = ComposeUrls)
   int32_t url_count = readInt32(recv_buf_, offset);
 
   std::vector<std::string> urls;
@@ -413,7 +486,7 @@ void UrlShortenBusinessLogic::ComposeUrls() {
       for (auto& url : urls) {
         Url new_target_url;
         new_target_url.expanded_url = url;
-        new_target_url.shortened_url = HOSTNAME + _GenRandomStr(10);
+        new_target_url.shortened_url = makeDeterministicShortUrl(url);
         target_urls.emplace_back(new_target_url);
       }
       _StoreUrlsInMongo(target_urls);
@@ -450,7 +523,7 @@ void UrlShortenBusinessLogic::GetExtendedUrls() {
   // Read from recv_buf_: [int64_t req_id][int32_t op_type][int32_t url_count][...shortened_url strings...]
   size_t offset = 0;
   int64_t req_id    = readInt64(recv_buf_, offset);
-  readInt32(recv_buf_, offset);                      // op_type (1 = GetExtendedUrls)
+  handler_->operation_type_ = readInt32(recv_buf_, offset);  // op_type (1 = GetExtendedUrls)
   int32_t url_count = readInt32(recv_buf_, offset);
 
   std::vector<std::string> shortened_urls;
@@ -516,7 +589,7 @@ void UrlShortenBusinessLogic::ComposeUrls(
     for (auto& url : urls) {
       Url new_target_url;
       new_target_url.expanded_url = url;
-      new_target_url.shortened_url = HOSTNAME + _GenRandomStr(10);
+      new_target_url.shortened_url = makeDeterministicShortUrl(url);
       target_urls.emplace_back(new_target_url);
     }
 

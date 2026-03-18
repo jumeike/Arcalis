@@ -454,7 +454,7 @@ class PostStorageServiceProcessor : public ::apache::thrift::TDispatchProcessor 
     processMap_["ReadPost"] = &PostStorageServiceProcessor::process_ReadPost;
     processMap_["ReadPosts"] = &PostStorageServiceProcessor::process_ReadPosts;
   }
-#ifdef ENABLE_GEM5
+#if defined(ENABLE_GEM5) && defined(ENABLE_POSTSTORAGE_GEM5_SERVER)
   //void runLoop(::apache::thrift::protocol::TProtocol* iprot, 
   bool process(std::shared_ptr<::apache::thrift::protocol::TProtocol> iprot,
              std::shared_ptr<::apache::thrift::protocol::TProtocol> oprot,

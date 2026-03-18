@@ -329,7 +329,11 @@ class UserTimelineServiceClient : virtual public UserTimelineServiceIf {
   ::apache::thrift::protocol::TProtocol* oprot_;
 };
 
+#ifdef ENABLE_GEM5
+class UserTimelineServiceProcessor : public apache::thrift::TDispatchProcessor {
+#else
 class UserTimelineServiceProcessor : public ::apache::thrift::TDispatchProcessor {
+#endif
  protected:
   ::std::shared_ptr<UserTimelineServiceIf> iface_;
   virtual bool dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext) override;
@@ -346,15 +350,30 @@ class UserTimelineServiceProcessor : public ::apache::thrift::TDispatchProcessor
     processMap_["ReadUserTimeline"] = &UserTimelineServiceProcessor::process_ReadUserTimeline;
   }
 
+#ifdef ENABLE_GEM5
+  bool process(std::shared_ptr<::apache::thrift::protocol::TProtocol> iprot,
+               std::shared_ptr<::apache::thrift::protocol::TProtocol> oprot,
+               void* callContext) override;
+#endif
+
   virtual ~UserTimelineServiceProcessor() {}
 };
 
+#ifdef ENABLE_GEM5
+class UserTimelineServiceProcessorFactory : public apache::thrift::TProcessorFactory {
+ public:
+  UserTimelineServiceProcessorFactory(const ::std::shared_ptr< UserTimelineServiceIfFactory >& handlerFactory) noexcept :
+      handlerFactory_(handlerFactory) {}
+
+  ::std::shared_ptr< apache::thrift::TProcessor > getProcessor(const apache::thrift::TConnectionInfo& connInfo) override;
+#else
 class UserTimelineServiceProcessorFactory : public ::apache::thrift::TProcessorFactory {
  public:
   UserTimelineServiceProcessorFactory(const ::std::shared_ptr< UserTimelineServiceIfFactory >& handlerFactory) noexcept :
       handlerFactory_(handlerFactory) {}
 
   ::std::shared_ptr< ::apache::thrift::TProcessor > getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) override;
+#endif
 
  protected:
   ::std::shared_ptr< UserTimelineServiceIfFactory > handlerFactory_;
@@ -398,11 +417,19 @@ class UserTimelineServiceMultiface : virtual public UserTimelineServiceIf {
 // only be used when you need to share a connection among multiple threads
 class UserTimelineServiceConcurrentClient : virtual public UserTimelineServiceIf {
  public:
+#ifdef ENABLE_GEM5
+  UserTimelineServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else
   UserTimelineServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> prot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(prot);
   }
+#ifdef ENABLE_GEM5
+  UserTimelineServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#else
   UserTimelineServiceConcurrentClient(std::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, std::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot, std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync) : sync_(sync)
+#endif
 {
     setProtocol(iprot,oprot);
   }
@@ -434,7 +461,11 @@ class UserTimelineServiceConcurrentClient : virtual public UserTimelineServiceIf
   std::shared_ptr< ::apache::thrift::protocol::TProtocol> poprot_;
   ::apache::thrift::protocol::TProtocol* iprot_;
   ::apache::thrift::protocol::TProtocol* oprot_;
+#ifdef ENABLE_GEM5
+  std::shared_ptr< apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#else
   std::shared_ptr< ::apache::thrift::async::TConcurrentClientSyncInfo> sync_;
+#endif
 };
 
 #ifdef _MSC_VER

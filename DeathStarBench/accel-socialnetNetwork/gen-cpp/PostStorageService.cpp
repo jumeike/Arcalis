@@ -6,8 +6,9 @@
  */
 #include "PostStorageService.h"
 
-#ifdef ENABLE_GEM5
-#include "../src/OptPostStorageService/server/PostStorageHandler.h"
+#if defined(ENABLE_GEM5) && defined(ENABLE_POSTSTORAGE_GEM5_SERVER)
+// #include "../src/OptPostStorageService/server/PostStorageHandler.h"
+#include "../src/PostStorageService/server/PostStorageHandler.h"
 #endif
 namespace social_network {
 
@@ -1168,7 +1169,7 @@ bool PostStorageServiceProcessor::dispatchCall(::apache::thrift::protocol::TProt
   return true;
 }
 
-#ifdef ENABLE_GEM5
+#if defined(ENABLE_GEM5) && defined(ENABLE_POSTSTORAGE_GEM5_SERVER)
 bool PostStorageServiceProcessor::process(
    std::shared_ptr<apache::thrift::protocol::TProtocol> in,
    std::shared_ptr<apache::thrift::protocol::TProtocol> out,

@@ -55,6 +55,10 @@
 #include <thrift/transport/PlatformSocket.h>
 #include <thrift/transport/SocketCommon.h>
 
+#ifdef ENABLE_GEM5
+#include <cstdlib>
+#endif
+
 #ifndef SOCKOPT_CAST_T
 #ifndef _WIN32
 #define SOCKOPT_CAST_T void
@@ -78,6 +82,20 @@ using std::string;
 namespace apache {
 namespace thrift {
 namespace transport {
+
+#ifdef ENABLE_GEM5
+namespace {
+bool isGem5ReplayEnabledForProcess() {
+  const char* env = std::getenv("THRIFT_GEM5_REPLAY");
+  if (env == nullptr) {
+    return false;
+  }
+  return (std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0 ||
+          std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "yes") == 0 ||
+          std::strcmp(env, "YES") == 0);
+}
+} // namespace
+#endif
 
 /**
  * TSocket implementation.
@@ -147,8 +165,12 @@ TSocket::TSocket(THRIFT_SOCKET socket, std::shared_ptr<TConfiguration> config)
     noDelay_(1),
     maxRecvRetries_(5) {
   cachedPeerAddr_.ipv4.sin_family = AF_UNSPEC;
+  is_server_socket_ = true;
 #ifdef ENABLE_GEM5
-    replay_.loadTrace(trace_file_, num_requests_);
+    replay_enabled_ = isGem5ReplayEnabledForProcess();
+    if (replay_enabled_) {
+      replay_.loadTrace(trace_file_, num_requests_);
+    }
     //replay_.loadTrace("traces/dpdk_to_rpc.bin");
 #endif
 #ifdef SO_NOSIGPIPE
@@ -175,6 +197,13 @@ TSocket::TSocket(THRIFT_SOCKET socket, std::shared_ptr<THRIFT_SOCKET> interruptL
     noDelay_(1),
     maxRecvRetries_(5) {
   cachedPeerAddr_.ipv4.sin_family = AF_UNSPEC;
+  is_server_socket_ = true;
+#ifdef ENABLE_GEM5
+  replay_enabled_ = isGem5ReplayEnabledForProcess();
+  if (replay_enabled_) {
+    replay_.loadTrace(trace_file_, num_requests_);
+  }
+#endif
 #ifdef SO_NOSIGPIPE
   {
     int one = 1;
@@ -520,19 +549,21 @@ void TSocket::setSocketFD(THRIFT_SOCKET socket) {
     close();
   }
   socket_ = socket;
+  is_server_socket_ = true;
 }
 
 uint32_t TSocket::read(uint8_t* buf, uint32_t len) {
 #ifdef ENABLE_GEM5
-  int got = replay_.read(buf, len);
+  if (replay_enabled_) {
+    int got = replay_.read(buf, len);
 #ifdef ENABLE_TRACING
-  if (got > 0) {
-    LOG_DPDK_TO_RPC(buf, got);
+    if (is_server_socket_ && got > 0) {
+      LOG_DPDK_TO_RPC(buf, got);
+    }
+#endif
+    return got;
   }
 #endif
-  return got;
-  //return replay_.read(buf, len);
-#else 
   checkReadBytesAvailable(len);
   if (socket_ == THRIFT_INVALID_SOCKET) {
     throw TTransportException(TTransportException::NOT_OPEN, "Called read on non-open socket");
@@ -653,21 +684,25 @@ try_again:
     throw TTransportException(TTransportException::UNKNOWN, "Unknown", errno_copy);
   }
 #ifdef ENABLE_TRACING 
-  if (got > 0) {
+  if (is_server_socket_ && got > 0) {
     LOG_DPDK_TO_RPC(buf, got);
   }
 #endif // ENABLE_TRACING
   return got;
-#endif //ENABLE_GEM5
 }
 
 void TSocket::write(const uint8_t* buf, uint32_t len) {
 #ifdef ENABLE_GEM5
+  if (replay_enabled_) {
 #ifdef ENABLE_TRACING
-  LOG_RPC_TO_DPDK(buf, len);
+    if (is_server_socket_) {
+      LOG_RPC_TO_DPDK(buf, len);
+    }
 #endif
-  replay_.write(buf, len);
-#else
+    replay_.write(buf, len);
+    return;
+  }
+#endif // ENABLE_GEM5
   uint32_t sent = 0;
 
   while (sent < len) {
@@ -679,7 +714,6 @@ void TSocket::write(const uint8_t* buf, uint32_t len) {
     }
     sent += b;
   }
-#endif //ENABLE_GEM5
 }
 
 uint32_t TSocket::write_partial(const uint8_t* buf, uint32_t len) {
@@ -719,7 +753,7 @@ uint32_t TSocket::write_partial(const uint8_t* buf, uint32_t len) {
     throw TTransportException(TTransportException::NOT_OPEN, "Socket send returned 0.");
   }
 #ifdef ENABLE_TRACING 
-  if (b > 0) {
+  if (is_server_socket_ && b > 0) {
     LOG_RPC_TO_DPDK(buf, b);
   }
 #endif // ENABLE_TRACING

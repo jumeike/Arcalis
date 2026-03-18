@@ -372,10 +372,12 @@ protected:
 
   /** Whether to use low minimum TCP retransmission timeout */
   static bool useLowMinRto_;
+  bool is_server_socket_{false};
 #ifdef ENABLE_GEM5
 public:
     bool isReplayEOF() const { return replay_.isEOF(); }
     PacketReplaySocket& getReplaySocket() { return replay_; }
+  bool isReplayEnabled() const { return replay_enabled_; }
     static void setTraceConfig(const std::string& file, int requests) {
         trace_file_ = file;
         num_requests_ = requests;
@@ -387,6 +389,7 @@ private:
 #ifdef ENABLE_GEM5
     static std::string trace_file_;
     static int num_requests_;
+  bool replay_enabled_{false};
     PacketReplaySocket replay_;
 #endif
 };

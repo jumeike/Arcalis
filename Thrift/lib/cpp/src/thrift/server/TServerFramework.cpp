@@ -21,6 +21,8 @@
 #include <functional>
 #include <stdexcept>
 #include <stdint.h>
+#include <cstdlib>
+#include <cstring>
 #include <thrift/server/TServerFramework.h>
 
 #ifdef ENABLE_GEM5
@@ -30,6 +32,20 @@
 namespace apache {
 namespace thrift {
 namespace server {
+
+#ifdef ENABLE_GEM5
+namespace {
+bool isGem5ReplayEnabledForProcess() {
+  const char* env = std::getenv("THRIFT_GEM5_REPLAY");
+  if (env == nullptr) {
+    return false;
+  }
+  return (std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0 ||
+          std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "yes") == 0 ||
+          std::strcmp(env, "YES") == 0);
+}
+} // namespace
+#endif
 
 using apache::thrift::concurrency::Synchronized;
 using apache::thrift::protocol::TProtocol;
@@ -130,7 +146,11 @@ void TServerFramework::serve() {
   }
 
   // Fetch client from server
-#ifndef ENABLE_GEM5
+#ifdef ENABLE_GEM5
+  const bool use_replay = isGem5ReplayEnabledForProcess();
+  for (bool run_once = true; use_replay ? run_once : true; run_once = false) {
+#else
+  const bool use_replay = false;
   for (;;) {
 #endif
     try {
@@ -153,8 +173,12 @@ void TServerFramework::serve() {
       }
 
 #ifdef ENABLE_GEM5
-      THRIFT_SOCKET dummy_fd = 3;
-      client = std::make_shared<TSocket>(dummy_fd);
+      if (use_replay) {
+        THRIFT_SOCKET dummy_fd = 3;
+        client = std::make_shared<TSocket>(dummy_fd);
+      } else {
+        client = serverTransport_->accept();
+      }
 #else
       client = serverTransport_->accept();
 #endif
@@ -183,28 +207,26 @@ void TServerFramework::serve() {
       if (ttx.getType() == TTransportException::TIMED_OUT
           || ttx.getType() == TTransportException::CLIENT_DISCONNECT) {
         // Accept timeout and client disconnect - continue processing.
-#ifndef ENABLE_GEM5
-        continue;
-#endif
+        if (!use_replay) {
+          continue;
+        }
       } else if (ttx.getType() == TTransportException::END_OF_FILE
                  || ttx.getType() == TTransportException::INTERRUPTED) {
         // Server was interrupted.  This only happens when stopping.
-#ifndef ENABLE_GEM5
-        break;
-#endif
+        if (!use_replay) {
+          break;
+        }
       } else {
         // All other transport exceptions are logged.
         // State of connection is unknown.  Done.
         string errStr = string("TServerTransport died: ") + ttx.what();
         GlobalOutput(errStr.c_str());
-#ifndef ENABLE_GEM5
-        break;
-#endif
+        if (!use_replay) {
+          break;
+        }
       }
     }
-#ifndef ENABLE_GEM5
   }
-#endif
 
   releaseOneDescriptor("serverTransport", serverTransport_);
 }

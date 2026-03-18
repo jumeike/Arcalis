@@ -19,9 +19,28 @@
 
 #include <thrift/server/TConnectedClient.h>
 
+#ifdef ENABLE_GEM5
+#include <cstdlib>
+#include <cstring>
+#endif
+
 namespace apache {
 namespace thrift {
 namespace server {
+
+#ifdef ENABLE_GEM5
+namespace {
+bool isGem5ReplayEnabledForProcess() {
+  const char* env = std::getenv("THRIFT_GEM5_REPLAY");
+  if (env == nullptr) {
+    return false;
+  }
+  return (std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0 ||
+          std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "yes") == 0 ||
+          std::strcmp(env, "YES") == 0);
+}
+} // namespace
+#endif
 
 using apache::thrift::TProcessor;
 using apache::thrift::protocol::TProtocol;
@@ -52,8 +71,41 @@ void TConnectedClient::run() {
     opaqueContext_ = eventHandler_->createContext(inputProtocol_, outputProtocol_);
   }
 #ifdef ENABLE_GEM5
-  //processor_->runLoop(inputProtocol_, outputProtocol_, opaqueContext_);
-  processor_->process(inputProtocol_, outputProtocol_, opaqueContext_);
+  if (isGem5ReplayEnabledForProcess()) {
+    // Replay mode: delegate to processor-owned replay loop once.
+    processor_->process(inputProtocol_, outputProtocol_, opaqueContext_);
+  } else {
+    for (bool done = false; !done;) {
+      if (eventHandler_) {
+        eventHandler_->processContext(opaqueContext_, client_);
+      }
+
+      try {
+        if (!processor_->process(inputProtocol_, outputProtocol_, opaqueContext_)) {
+          break;
+        }
+      } catch (const TTransportException& ttx) {
+        switch (ttx.getType()) {
+          case TTransportException::END_OF_FILE:
+          case TTransportException::INTERRUPTED:
+          case TTransportException::TIMED_OUT:
+            done = true;
+            break;
+
+          default: {
+            string errStr = string("TConnectedClient died: ") + ttx.what();
+            GlobalOutput(errStr.c_str());
+            done = true;
+            break;
+          }
+        }
+      } catch (const TException& tex) {
+        string errStr = string("TConnectedClient processing exception: ") + tex.what();
+        GlobalOutput(errStr.c_str());
+        done = true;
+      }
+    }
+  }
 #else
   for (bool done = false; !done;) {
     if (eventHandler_) {

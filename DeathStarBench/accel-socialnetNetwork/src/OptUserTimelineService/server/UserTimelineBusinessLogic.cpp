@@ -413,8 +413,10 @@ void UserTimelineBusinessLogic::WriteUserTimeline() {
 
   bool operation_success = false;
   try {
-    const std::map<std::string, std::string> empty_carrier;
-    WriteUserTimeline(req_id, post_id, user_id, timestamp, empty_carrier);
+    const std::map<std::string, std::string> carrier = {
+        {"trace-id", "test-0000-0000"},
+        {"span-id", "00"}};
+    WriteUserTimeline(req_id, post_id, user_id, timestamp, carrier);
     resp_buf_offset_ = 0;
     resp_buf_size_ = 0;
     operation_success = true;
@@ -451,8 +453,10 @@ void UserTimelineBusinessLogic::ReadUserTimeline() {
   std::vector<Post> posts;
   bool operation_success = false;
   try {
-    const std::map<std::string, std::string> empty_carrier;
-    ReadUserTimeline(posts, req_id, user_id, start, stop, empty_carrier);
+    const std::map<std::string, std::string> carrier = {
+        {"trace-id", "test-0000-0000"},
+        {"span-id", "00"}};
+    ReadUserTimeline(posts, req_id, user_id, start, stop, carrier);
     serializeReadUserTimelineResponse(posts);
     operation_success = true;
   } catch (const std::exception& e) {

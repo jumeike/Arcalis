@@ -20,6 +20,9 @@
 #define cmd_send_app_resp    3
 #define cmd_send_app_buf     4
 #define cmd_set_dpdk_flag    5
+#define cmd_nested_rpc_delay 6
+#define nestedrpc_op_storepost 0
+#define nestedrpc_op_readpost  1
 #endif // ENABLE_CEREBELLUM
 
 #ifdef ENABLE_TRACING
@@ -128,6 +131,8 @@ class UserTimelineBusinessLogic {
                                                             const std::map<std::string, std::string>& carrier);
   std::vector<Post> GetPostsFromPostService(int64_t req_id, const std::vector<int64_t>& post_ids,
                                            const std::map<std::string, std::string>& carrier);
+    Post buildGeneratedPost(int64_t req_id, int64_t post_id, int64_t user_id,
+                                                    int64_t timestamp) const;
 
 #ifdef ENABLE_GEM5
     UserTimelineHandler* handler_{nullptr};
@@ -299,12 +304,15 @@ class UserTimelineBusinessLogic {
 #ifdef ENABLE_CEREBELLUM
     volatile uint64_t* readAddress{nullptr};
     volatile uint64_t* sendAddress{nullptr};
+    uint64_t storepost_delay_ticks_{0};
+    uint64_t readpost_delay_ticks_{0};
 
     void callEngineRead();
     bool callEngineDispatch();
     void callEngineWrite();
     void callEngineSendresp(bool success);
     void callEngineSendBuf();
+    bool callEngineDelay(uint8_t nested_rpc_op_kind, uint64_t delay_ticks);
     void setAddresses(volatile uint64_t* sAddress, volatile uint64_t* rAddress) {
         sendAddress = sAddress;
         readAddress = rAddress;

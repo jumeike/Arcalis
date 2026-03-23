@@ -1,12 +1,30 @@
 #include "UserTimelineBusinessLogic.h"
 #include "UserTimelineHandler.h"
 #include <algorithm>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <shared_mutex>
 
 namespace {
 std::unordered_map<int64_t, std::vector<std::pair<int64_t, int64_t>>> local_timeline_store;
+std::unordered_map<int64_t, social_network::Post> local_post_store;
 std::shared_mutex local_store_mutex;
+
+uint64_t parseDelayTicksEnv(const char* env_name, uint64_t fallback) {
+  const char* raw = std::getenv(env_name);
+  if (!raw || *raw == '\0') {
+    return fallback;
+  }
+
+  errno = 0;
+  char* end = nullptr;
+  const unsigned long long parsed = std::strtoull(raw, &end, 10);
+  if (errno != 0 || end == raw || *end != '\0') {
+    return fallback;
+  }
+  return static_cast<uint64_t>(parsed);
+}
 } // namespace
 
 namespace social_network {
@@ -18,6 +36,13 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   _unused_pool_2 = unused_pool_2;
   _unused_pool_3 = unused_pool_3;
   LOG(info) << "UserTimelineBusinessLogic initialized with local timeline storage and nested PostStorage RPC";
+
+#ifdef ENABLE_CEREBELLUM
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 0);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 0);
+  LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
+            << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
+#endif
 
 #ifdef ENABLE_GEM5
   if (!initializeBuffers()) {
@@ -234,6 +259,22 @@ void UserTimelineBusinessLogic::serializeReadUserTimelineResponse(const std::vec
 #endif // ENABLE_GEM5
 
 #ifdef ENABLE_CEREBELLUM
+bool UserTimelineBusinessLogic::callEngineDelay(uint8_t nested_rpc_op_kind, uint64_t delay_ticks) {
+  if (!sendAddress || !readAddress) {
+    return false;
+  }
+
+  // bits [3:0]: command, bits [5:4]: nested rpc op kind, bits [63:6]: delay ticks
+  const uint64_t payload =
+      ((delay_ticks << 6) |
+       ((static_cast<uint64_t>(nested_rpc_op_kind) & 0x3) << 4) |
+       (static_cast<uint64_t>(cmd_nested_rpc_delay) & 0xF));
+  *sendAddress = payload;
+  volatile uint64_t ack = *readAddress;
+  (void)ack;
+  return true;
+}
+
 void UserTimelineBusinessLogic::callEngineRead() {
   auto socket = getSocketFromTransport();
   if (!socket || !sendAddress || !readAddress) {
@@ -478,6 +519,69 @@ void UserTimelineBusinessLogic::ReadUserTimeline() {
 #endif
 }
 #endif // ENABLE_GEM5
+
+Post UserTimelineBusinessLogic::buildGeneratedPost(int64_t req_id, int64_t post_id,
+                                                   int64_t user_id,
+                                                   int64_t timestamp) const {
+  Post post;
+  const int32_t pseudo_thread_id = static_cast<int32_t>((user_id - 1 + 100) % 100);
+  post.post_id = post_id;
+  post.req_id = req_id;
+  post.timestamp = timestamp;
+  post.post_type = static_cast<PostType::type>(post_id % 4);
+
+  char text_buf[65];
+  snprintf(text_buf, sizeof(text_buf),
+           "Sample post text from thread %03d with post_id %010ld      ",
+           pseudo_thread_id % 1000, post_id);
+  std::string text(text_buf);
+  text.resize(64, ' ');
+  post.text = std::move(text);
+
+  post.creator.user_id = pseudo_thread_id + 1000;
+  char username_buf[17];
+  snprintf(username_buf, sizeof(username_buf), "user_%011d", pseudo_thread_id);
+  std::string creator_name(username_buf);
+  creator_name.resize(16, ' ');
+  post.creator.username = std::move(creator_name);
+
+  UserMention mention;
+  mention.user_id = (pseudo_thread_id + 1) * 1000;
+  char mention_buf[17];
+  snprintf(mention_buf, sizeof(mention_buf), "mentioned_%05d",
+           (pseudo_thread_id + 1) % 100000);
+  std::string mention_name(mention_buf);
+  mention_name.resize(16, ' ');
+  mention.username = std::move(mention_name);
+  post.user_mentions.push_back(std::move(mention));
+
+  Media media;
+  media.media_id = (post_id * 10) & 0x7FFFFFFFFFFFFFFF;
+  static const char* kMediaTypes[] = {
+      "image   ", "video   ", "audio   ", "document", "gif     "};
+  media.media_type = kMediaTypes[post_id % 5];
+  post.media.push_back(std::move(media));
+
+  Url url;
+  std::string short_url = "http://short.ly/" + std::to_string(post_id % 10000000000LL);
+  std::string expanded_url = "http://example.com/full_url/" +
+                             std::to_string(post_id % 100000000000000LL);
+  if (short_url.size() < 32) {
+    short_url.resize(32, ' ');
+  } else if (short_url.size() > 32) {
+    short_url.resize(32);
+  }
+  if (expanded_url.size() < 64) {
+    expanded_url.resize(64, ' ');
+  } else if (expanded_url.size() > 64) {
+    expanded_url.resize(64);
+  }
+  url.shortened_url = std::move(short_url);
+  url.expanded_url = std::move(expanded_url);
+  post.urls.push_back(std::move(url));
+
+  return post;
+}
 
 void UserTimelineBusinessLogic::WriteUserTimeline(
     int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
@@ -737,6 +841,20 @@ std::vector<std::pair<int64_t, int64_t>> UserTimelineBusinessLogic::ReadTimeline
 void UserTimelineBusinessLogic::StorePostToPostService(
     int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
     const std::map<std::string, std::string>& carrier) {
+  Post post = buildGeneratedPost(req_id, post_id, user_id, timestamp);
+
+#ifdef ENABLE_CEREBELLUM
+  {
+    // std::unique_lock<std::shared_mutex> lock(local_store_mutex);
+    local_post_store[post_id] = post;
+  }
+  if (!callEngineDelay(nestedrpc_op_storepost, storepost_delay_ticks_)) {
+    LOG(warning) << "Skipping nested StorePost RPC but engine delay command could not be sent";
+  }
+  _post_service_calls++;
+  return;
+#endif
+
   auto post_client_wrapper = _post_client_pool->Pop();
   if (!post_client_wrapper) {
     ServiceException se;
@@ -744,62 +862,6 @@ void UserTimelineBusinessLogic::StorePostToPostService(
     se.message = "Failed to connect to post-storage-service";
     throw se;
   }
-
-  Post post;
-  const int32_t pseudo_thread_id = static_cast<int32_t>((user_id - 1 + 100) % 100);
-  post.post_id = post_id;
-  post.req_id = req_id;
-  post.timestamp = timestamp;
-  post.post_type = static_cast<PostType::type>(post_id % 4);
-
-  char text_buf[65];
-  snprintf(text_buf, sizeof(text_buf),
-           "Sample post text from thread %03d with post_id %010ld      ",
-           pseudo_thread_id % 1000, post_id);
-  std::string text(text_buf);
-  text.resize(64, ' ');
-  post.text = std::move(text);
-
-  post.creator.user_id = pseudo_thread_id + 1000;
-  char username_buf[17];
-  snprintf(username_buf, sizeof(username_buf), "user_%011d", pseudo_thread_id);
-  std::string creator_name(username_buf);
-  creator_name.resize(16, ' ');
-  post.creator.username = std::move(creator_name);
-
-  UserMention mention;
-  mention.user_id = (pseudo_thread_id + 1) * 1000;
-  char mention_buf[17];
-  snprintf(mention_buf, sizeof(mention_buf), "mentioned_%05d", (pseudo_thread_id + 1) % 100000);
-  std::string mention_name(mention_buf);
-  mention_name.resize(16, ' ');
-  mention.username = std::move(mention_name);
-  post.user_mentions.push_back(std::move(mention));
-
-  Media media;
-  media.media_id = (post_id * 10) & 0x7FFFFFFFFFFFFFFF;
-  static const char* kMediaTypes[] = {
-      "image   ", "video   ", "audio   ", "document", "gif     "};
-  media.media_type = kMediaTypes[post_id % 5];
-  post.media.push_back(std::move(media));
-
-  Url url;
-  std::string short_url = "http://short.ly/" + std::to_string(post_id % 10000000000LL);
-  std::string expanded_url = "http://example.com/full_url/" +
-                             std::to_string(post_id % 100000000000000LL);
-  if (short_url.size() < 32) {
-    short_url.resize(32, ' ');
-  } else if (short_url.size() > 32) {
-    short_url.resize(32);
-  }
-  if (expanded_url.size() < 64) {
-    expanded_url.resize(64, ' ');
-  } else if (expanded_url.size() > 64) {
-    expanded_url.resize(64);
-  }
-  url.shortened_url = std::move(short_url);
-  url.expanded_url = std::move(expanded_url);
-  post.urls.push_back(std::move(url));
 
   auto post_client = post_client_wrapper->GetClient();
   try {
@@ -817,6 +879,33 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
     int64_t req_id, const std::vector<int64_t>& post_ids,
     const std::map<std::string, std::string>& carrier) {
   auto post_service_start = std::chrono::high_resolution_clock::now();
+
+#ifdef ENABLE_CEREBELLUM
+  if (!callEngineDelay(nestedrpc_op_readpost, readpost_delay_ticks_)) {
+    LOG(warning) << "Skipping nested ReadPost RPC but engine delay command could not be sent";
+  }
+
+  std::vector<Post> posts;
+  posts.reserve(post_ids.size());
+
+  {
+    // std::shared_lock<std::shared_mutex> lock(local_store_mutex);
+    for (const int64_t post_id : post_ids) {
+      auto it = local_post_store.find(post_id);
+      if (it != local_post_store.end()) {
+        posts.emplace_back(it->second);
+      } else {
+        posts.emplace_back(buildGeneratedPost(req_id, post_id, post_id, 0));
+      }
+    }
+  }
+
+  _post_service_calls++;
+  auto post_service_end = std::chrono::high_resolution_clock::now();
+  _post_service_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      post_service_end - post_service_start).count();
+  return posts;
+#endif
 
   std::future<std::vector<Post>> post_future = std::async(std::launch::async, [&]() {
     auto post_client_wrapper = _post_client_pool->Pop();

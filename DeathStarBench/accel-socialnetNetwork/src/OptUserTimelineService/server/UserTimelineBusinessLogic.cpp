@@ -905,7 +905,7 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
   _post_service_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       post_service_end - post_service_start).count();
   return posts;
-#endif
+#else
 
   std::future<std::vector<Post>> post_future = std::async(std::launch::async, [&]() {
     auto post_client_wrapper = _post_client_pool->Pop();
@@ -945,6 +945,7 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
       post_service_end - post_service_start).count();
 
   return posts;
+#endif // ENABLE_CEREBELLUM
 }
 
 void UserTimelineBusinessLogic::GetMetrics(std::map<std::string, int64_t>& metrics) {

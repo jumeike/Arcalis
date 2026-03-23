@@ -38,8 +38,8 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with single Redis pool";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 0);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 0);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #endif
@@ -64,8 +64,8 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with Redis replication";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 0);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 0);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #endif
@@ -89,8 +89,8 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with Redis cluster";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 0);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 0);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #endif

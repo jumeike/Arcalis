@@ -399,7 +399,7 @@ void UserTimelineBusinessLogic::runLoop(
   for (bool done = false; !done;) {
     if (runs == 1000) {
       LOG(info) << "JU:JU Begin ROI";
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
       m5_exit_addr(0);
 #endif
     }
@@ -426,7 +426,7 @@ void UserTimelineBusinessLogic::runLoop(
     runs++;
   }
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
   m5_work_end_addr(0, 0);
   LOG(info) << "JU:JU End ROI";
 #endif

@@ -6,8 +6,8 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -no-pie -fno-pie")
 
 # Uncomment to enable Cerebellum
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CEREBELLUM")
-#set(ENABLE_CEREBELLUM ON)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CEREBELLUM")
+set(ENABLE_CEREBELLUM ON)
 
 # Uncomment to enable GEM5  
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
@@ -64,7 +64,7 @@ target_include_directories(
     ${EXTRA_INCLUDE_DIRS}
 )
 
-target_link_directories(UniqueIdService PRIVATE /usr/local/lib)
+target_link_directories(${BINARY_NAME} PRIVATE /usr/local/lib)
 
 target_link_libraries(
     ${BINARY_NAME}

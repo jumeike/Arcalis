@@ -18,11 +18,11 @@
 #include "PacketLogger.h"
 #endif
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
 #pragma message("Compiling with gem5 instructions")
 #include <gem5/m5ops.h>
 #include "m5_mmap.h"
-#endif // ENABLE_GEM5_TEST
+#endif // ENABLE_GEM5
 
 #ifdef ENABLE_CEREBELLUM
 #pragma message("Compiling with cerebellum")
@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
 
   LOG(info) << "Using local in-memory timeline storage with nested PostStorage RPC";
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
   map_m5_mem();
 #endif
 
@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
   LOG(info) << "Starting the opt-user-timeline-service server on port " << port << "...";
   LOG(info) << "Local storage mode enabled";
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
   m5_work_begin_addr(0, 0);
 #ifdef ENABLE_CEREBELLUM
   CerebellumManagerFactory::waitingTillMSRReady();
@@ -157,7 +157,10 @@ int main(int argc, char* argv[]) {
   cerebellum_manager->sendJobMSR(CerebellumJob());
 
   uint64_t cpuid = 0;
+  
+  printf("Allocating uncacheable page to comminucate with the engine.\n");
   auto add = cerebellum_manager->getAddress(cpuid);
+  
   sendAddress = add.first;
   readAddress = add.second;
 
@@ -168,7 +171,7 @@ int main(int argc, char* argv[]) {
 
   business_logic->setAddresses(sendAddress, readAddress);
 #endif // ENABLE_CEREBELLUM
-#endif // ENABLE_GEM5_TEST
+#endif // ENABLE_GEM5
 
   server.serve();
 
@@ -190,7 +193,7 @@ int main(int argc, char* argv[]) {
   LOG(info) << "  Business: " << business_time << " ns avg, "
             << business_fraction << "% of total";
 
-#ifdef ENABLE_GEM5_TEST
+#ifdef ENABLE_GEM5
   unmap_m5_mem();
 #endif
 

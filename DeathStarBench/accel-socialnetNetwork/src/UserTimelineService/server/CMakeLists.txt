@@ -11,6 +11,12 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_GEM5")
 #set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DENABLE_CEREBELLUM -DENABLE_GEM5")
 #set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_LOGGING")
 
+
+set(ENABLE_NESTED_RPC_TIMING_MODEL OFF)
+if (ENABLE_NESTED_RPC_TIMING_MODEL)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_NESTED_RPC_TIMING_MODEL")
+endif()
+
 find_package(Boost REQUIRED COMPONENTS log log_setup program_options)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -18,8 +24,13 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(THRIFT REQUIRED thrift)
 pkg_check_modules(MONGOC REQUIRED libmongoc-1.0)
 
+set(BINARY_NAME "UserTimelineService")
+if(ENABLE_NESTED_RPC_TIMING_MODEL)
+    set(BINARY_NAME "${BINARY_NAME}.nrtm")
+endif()
+
 add_executable(
-    UserTimelineService
+    ${BINARY_NAME}
     main_server.cpp
     UserTimelineHandler.cpp
     UserTimelineBusinessLogic.cpp
@@ -32,7 +43,7 @@ add_executable(
 #add_compile_definitions(DEBUG_LOGGING)
 
 target_include_directories(
-    UserTimelineService PRIVATE
+    ${BINARY_NAME} PRIVATE
     /usr/include/libmongoc-1.0
     /usr/include/libbson-1.0
     /usr/local/include/jaegertracing
@@ -42,7 +53,7 @@ target_include_directories(
 )
 
 target_link_libraries(
-    UserTimelineService
+    ${BINARY_NAME}
     ${MONGOC_LIBRARIES}
     nlohmann_json::nlohmann_json
     thrift
@@ -60,4 +71,4 @@ target_link_libraries(
     OpenSSL::SSL
 )
 
-install(TARGETS UserTimelineService DESTINATION ./)
+install(TARGETS ${BINARY_NAME} DESTINATION ./)

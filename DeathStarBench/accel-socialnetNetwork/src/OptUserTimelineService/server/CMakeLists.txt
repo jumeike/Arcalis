@@ -15,6 +15,10 @@ set(ENABLE_CEREBELLUM ON)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
 set(ENABLE_GEM5 ON)
 
+# Compile-time switch for nested PostStorage RPC timing model in UserTimeline.
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_NESTED_RPC_TIMING_MODEL")
+set(ENABLE_NESTED_RPC_TIMING_MODEL ON)
+
 # Set paths for GEM5
 set(M5OPS_HEADER_PATH "/home/ubuntu/gem5/include")
 set(M5_BUILD_PATH "/home/ubuntu/gem5/util/m5/build/x86")
@@ -31,6 +35,10 @@ set(EXTRA_INCLUDE_DIRS "")
 if(ENABLE_CEREBELLUM)
     set(BINARY_NAME "${BINARY_NAME}.crb")
     list(APPEND EXTRA_LIBS "cerebellum")
+endif()
+
+if(ENABLE_NESTED_RPC_TIMING_MODEL)
+    set(BINARY_NAME "${BINARY_NAME}.nrtm")
 endif()
 
 if(ENABLE_GEM5)

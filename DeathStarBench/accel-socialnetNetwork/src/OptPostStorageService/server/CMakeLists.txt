@@ -60,6 +60,7 @@ add_executable(
 )
 
 #add_compile_definitions(DEBUG_LOGGING)
+#add_compile_definitions(ENABLE_POSTSTORAGE_GEM5_SERVER)
 
 target_include_directories(
     ${BINARY_NAME} PRIVATE

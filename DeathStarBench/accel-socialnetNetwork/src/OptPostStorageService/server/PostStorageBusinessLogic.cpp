@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstring>
 #include <future>
+#include <iostream>
 // STEP 1: Add to top of PostStorageBusinessLogic.cpp (after existing includes)
 #include <unordered_map>
 #include <shared_mutex>
@@ -308,6 +309,13 @@ void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* proce
     read_pos_ = 0;
     write_pos_ = 0;
 
+    uint64_t sw_storepost_total_us = 0;
+    uint64_t sw_storepost_count = 0;
+    uint64_t sw_readpost_total_us = 0;
+    uint64_t sw_readpost_count = 0;
+    uint64_t sw_readposts_total_us = 0;
+    uint64_t sw_readposts_count = 0;
+
     int runs = 0;
 
     for (bool done = false; !done;) {
@@ -323,9 +331,25 @@ void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* proce
         bool res = callEngineDispatch();
         callEngineWrite();
         #else
+        auto sw_req_start = std::chrono::high_resolution_clock::now();
         callSWread();
         bool res = callSWdispatch();
         callSWwrite();
+        auto sw_req_end = std::chrono::high_resolution_clock::now();
+        if (fname_ == "StorePost" || fname_ == "ReadPost" || fname_ == "ReadPosts") {
+            auto sw_req_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                sw_req_end - sw_req_start).count();
+            if (fname_ == "StorePost") {
+                sw_storepost_total_us += static_cast<uint64_t>(sw_req_us);
+                sw_storepost_count++;
+            } else if (fname_ == "ReadPost") {
+                sw_readpost_total_us += static_cast<uint64_t>(sw_req_us);
+                sw_readpost_count++;
+            } else if (fname_ == "ReadPosts") {
+                sw_readposts_total_us += static_cast<uint64_t>(sw_req_us);
+                sw_readposts_count++;
+            }
+        }
         #endif
 
         if (!res)
@@ -353,6 +377,22 @@ void PostStorageBusinessLogic::runLoop(apache::thrift::TDispatchProcessor* proce
     //m5_work_end_addr(0, 0);
     //LOG(info) << "JU:JU End ROI";
    #endif
+
+    if (sw_storepost_count > 0) {
+        std::cout << "[TEMP TIMING][SW][AVG] StorePost avg_us="
+                  << (sw_storepost_total_us / sw_storepost_count)
+                  << " samples=" << sw_storepost_count << std::endl;
+    }
+    if (sw_readpost_count > 0) {
+        std::cout << "[TEMP TIMING][SW][AVG] ReadPost avg_us="
+                  << (sw_readpost_total_us / sw_readpost_count)
+                  << " samples=" << sw_readpost_count << std::endl;
+    }
+    if (sw_readposts_count > 0) {
+        std::cout << "[TEMP TIMING][SW][AVG] ReadPosts avg_us="
+                  << (sw_readposts_total_us / sw_readposts_count)
+                  << " samples=" << sw_readposts_count << std::endl;
+    }
 
     LOG(info) << "JU:JU Finished PostStorage business logic runLoop";
     LOG(info) << "JU:JU =========================================";

@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 namespace {
 std::unordered_map<int64_t, social_network::Post> local_post_store;
@@ -42,6 +43,11 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
+#elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
+            << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif
 
 #ifdef ENABLE_GEM5
@@ -68,6 +74,11 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
+#elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
+            << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif
 
 #ifdef ENABLE_GEM5
@@ -93,6 +104,11 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
+#elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
+            << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif
 
 #ifdef ENABLE_GEM5
@@ -977,6 +993,15 @@ void UserTimelineBusinessLogic::StorePostToPostService(
   return;
 #endif
 
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+  if (nested_rpc_timing_model_enabled_) {
+    local_post_store[post_id] = post;
+    std::this_thread::sleep_for(std::chrono::microseconds(nested_storepost_delay_us_));
+    _post_service_calls++;
+    return;
+  }
+#endif
+
   auto post_client_wrapper = _post_client_pool->Pop();
   if (!post_client_wrapper) {
     ServiceException se;
@@ -1024,6 +1049,29 @@ std::vector<Post> UserTimelineBusinessLogic::GetPostsFromPostService(
   _post_service_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       post_service_end - post_service_start).count();
   return posts;
+#endif
+
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+  if (nested_rpc_timing_model_enabled_) {
+    std::this_thread::sleep_for(std::chrono::microseconds(nested_readposts_delay_us_));
+
+    std::vector<Post> posts;
+    posts.reserve(post_ids.size());
+    for (const int64_t post_id : post_ids) {
+      auto it = local_post_store.find(post_id);
+      if (it != local_post_store.end()) {
+        posts.emplace_back(it->second);
+      } else {
+        posts.emplace_back(buildGeneratedPost(req_id, post_id, post_id, 0));
+      }
+    }
+
+    _post_service_calls++;
+    auto post_service_end = std::chrono::high_resolution_clock::now();
+    _post_service_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        post_service_end - post_service_start).count();
+    return posts;
+  }
 #endif
   
   std::future<std::vector<Post>> post_future = std::async(std::launch::async, [&]() {

@@ -86,6 +86,12 @@ class UserTimelineBusinessLogic {
     void setTraceConfig(const std::string& file, int requests);
 #endif // ENABLE_GEM5
 
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    void setNestedRpcTimingModel(bool enabled) { nested_rpc_timing_model_enabled_ = enabled; }
+    void setNestedStorepostDelayUs(uint64_t us) { nested_storepost_delay_us_ = us; }
+    void setNestedReadpostsDelayUs(uint64_t us) { nested_readposts_delay_us_ = us; }
+#endif // ENABLE_NESTED_RPC_TIMING_MODEL
+
  private:
      ClientPool<ThriftClient<PostStorageServiceClient>>* _post_client_pool;
     void* _unused_pool_2;
@@ -290,9 +296,20 @@ class UserTimelineBusinessLogic {
 #ifdef ENABLE_CEREBELLUM
     volatile uint64_t* readAddress{nullptr};
     volatile uint64_t* sendAddress{nullptr};
+#endif // ENABLE_CEREBELLUM
+
+#if defined(ENABLE_CEREBELLUM) || defined(ENABLE_NESTED_RPC_TIMING_MODEL)
     uint64_t storepost_delay_ticks_{0};
     uint64_t readpost_delay_ticks_{0};
+#endif
 
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    bool nested_rpc_timing_model_enabled_{false};
+    uint64_t nested_storepost_delay_us_{0};
+    uint64_t nested_readposts_delay_us_{0};
+#endif
+
+#ifdef ENABLE_CEREBELLUM
     void callEngineRead();
     bool callEngineDispatch();
     void callEngineWrite();

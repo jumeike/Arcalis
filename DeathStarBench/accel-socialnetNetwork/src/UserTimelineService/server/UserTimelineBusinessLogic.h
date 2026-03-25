@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include <cstring>
 
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+#include <cstdint>
+#endif
+
 #ifdef ENABLE_CEREBELLUM
 #define cmd_send_dpdk_buf    0
 #define cmd_send_dpdk_len    1
@@ -86,6 +90,12 @@ class UserTimelineBusinessLogic {
   // Metrics and monitoring
   void GetMetrics(std::map<std::string, int64_t>& metrics);
   void ResetMetrics();
+
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    void setNestedRpcTimingModel(bool enabled) { nested_rpc_timing_model_enabled_ = enabled; }
+    void setNestedStorepostDelayUs(uint64_t us) { nested_storepost_delay_us_ = us; }
+    void setNestedReadpostsDelayUs(uint64_t us) { nested_readposts_delay_us_ = us; }
+#endif
 
 #ifdef ENABLE_GEM5
     uint8_t* getRecvBuffer() const { return recv_buf_; }
@@ -318,6 +328,12 @@ class UserTimelineBusinessLogic {
         readAddress = rAddress;
     }
 #endif // ENABLE_CEREBELLUM
+
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    bool nested_rpc_timing_model_enabled_{false};
+    uint64_t nested_storepost_delay_us_{583100};
+    uint64_t nested_readposts_delay_us_{1272966};
+#endif // ENABLE_NESTED_RPC_TIMING_MODEL
 };
 
 } // namespace social_network

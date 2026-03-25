@@ -77,6 +77,14 @@ int main(int argc, char *argv[]) {
        po::value<int>(),
        "Number of requests to process")
 #endif
+    #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+      ("enable-nested-rpc-timing-model", po::bool_switch()->default_value(false),
+       "Enable nested PostStorage RPC timing model (replace StorePost/ReadPosts RPC with delay model)")
+      ("nested-storepost-delay-us", po::value<uint64_t>(),
+       "Delay in microseconds for nested StorePost timing model")
+      ("nested-readposts-delay-us", po::value<uint64_t>(),
+       "Delay in microseconds for nested ReadPosts timing model")
+    #endif
       ;
 
   po::variables_map vm;
@@ -116,6 +124,12 @@ int main(int argc, char *argv[]) {
       redis_cluster_flag = true;
     }
   }
+
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+  const bool enable_timing_model = vm["enable-nested-rpc-timing-model"].as<bool>();
+  const bool has_storepost_delay_override = vm.count("nested-storepost-delay-us") > 0;
+  const bool has_readposts_delay_override = vm.count("nested-readposts-delay-us") > 0;
+#endif
 
   //SetUpTracer("config/jaeger-config.yml", "user-timeline-service");
 
@@ -226,6 +240,17 @@ int main(int argc, char *argv[]) {
     RedisCluster redis_client_pool = init_redis_cluster_client_pool(config_json, "user-timeline");
     business_logic = std::make_unique<UserTimelineBusinessLogic>(
         &redis_client_pool, mongodb_client_pool, &post_storage_client_pool);
+  #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    business_logic->setNestedRpcTimingModel(enable_timing_model);
+    if (has_storepost_delay_override) {
+      business_logic->setNestedStorepostDelayUs(
+        vm["nested-storepost-delay-us"].as<uint64_t>());
+    }
+    if (has_readposts_delay_override) {
+      business_logic->setNestedReadpostsDelayUs(
+        vm["nested-readposts-delay-us"].as<uint64_t>());
+    }
+  #endif
     handler->setBusinessLogic(business_logic.get());
 
 #ifdef ENABLE_GEM5
@@ -275,6 +300,17 @@ int main(int argc, char *argv[]) {
     Redis redis_primary_client_pool = init_redis_replica_client_pool(config_json, "redis-primary");
     business_logic = std::make_unique<UserTimelineBusinessLogic>(
         &redis_replica_client_pool, &redis_primary_client_pool, mongodb_client_pool, &post_storage_client_pool);
+  #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    business_logic->setNestedRpcTimingModel(enable_timing_model);
+    if (has_storepost_delay_override) {
+      business_logic->setNestedStorepostDelayUs(
+        vm["nested-storepost-delay-us"].as<uint64_t>());
+    }
+    if (has_readposts_delay_override) {
+      business_logic->setNestedReadpostsDelayUs(
+        vm["nested-readposts-delay-us"].as<uint64_t>());
+    }
+  #endif
     handler->setBusinessLogic(business_logic.get());
 
   #ifdef ENABLE_GEM5
@@ -324,6 +360,17 @@ int main(int argc, char *argv[]) {
     Redis redis_client_pool = init_redis_client_pool(config_json, "user-timeline");
     business_logic = std::make_unique<UserTimelineBusinessLogic>(
         &redis_client_pool, mongodb_client_pool, &post_storage_client_pool);
+  #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    business_logic->setNestedRpcTimingModel(enable_timing_model);
+    if (has_storepost_delay_override) {
+      business_logic->setNestedStorepostDelayUs(
+        vm["nested-storepost-delay-us"].as<uint64_t>());
+    }
+    if (has_readposts_delay_override) {
+      business_logic->setNestedReadpostsDelayUs(
+        vm["nested-readposts-delay-us"].as<uint64_t>());
+    }
+  #endif
     handler->setBusinessLogic(business_logic.get());
 
 #ifdef ENABLE_GEM5

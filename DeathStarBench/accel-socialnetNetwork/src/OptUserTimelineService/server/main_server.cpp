@@ -64,6 +64,14 @@ int main(int argc, char* argv[]) {
       ("trace-file", po::value<std::string>(), "Trace file to replay")
       ("num-requests", po::value<int>(), "Number of requests to process")
 #endif
+  #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+    ("enable-nested-rpc-timing-model", po::bool_switch()->default_value(false),
+     "Enable nested PostStorage RPC timing model (replace StorePost/ReadPosts RPC with delay model)")
+    ("nested-storepost-delay-us", po::value<uint64_t>(),
+     "Delay in microseconds for nested StorePost timing model")
+    ("nested-readposts-delay-us", po::value<uint64_t>(),
+     "Delay in microseconds for nested ReadPosts timing model")
+  #endif
       ;
 
   po::variables_map vm;
@@ -123,6 +131,29 @@ int main(int argc, char* argv[]) {
 
   auto business_logic = std::make_unique<UserTimelineBusinessLogic>(
       &post_storage_client_pool, nullptr, nullptr);
+
+#ifdef ENABLE_NESTED_RPC_TIMING_MODEL
+  const bool enable_timing_model = vm["enable-nested-rpc-timing-model"].as<bool>();
+  business_logic->setNestedRpcTimingModel(enable_timing_model);
+  if (vm.count("nested-storepost-delay-us")) {
+    business_logic->setNestedStorepostDelayUs(
+        vm["nested-storepost-delay-us"].as<uint64_t>());
+  }
+  if (vm.count("nested-readposts-delay-us")) {
+    business_logic->setNestedReadpostsDelayUs(
+        vm["nested-readposts-delay-us"].as<uint64_t>());
+  }
+  LOG(info) << "Nested RPC timing model " << (enable_timing_model ? "enabled" : "disabled");
+  if (enable_timing_model) {
+    if (vm.count("nested-storepost-delay-us")) {
+      LOG(info) << "Nested StorePost delay us override set via CLI";
+    }
+    if (vm.count("nested-readposts-delay-us")) {
+      LOG(info) << "Nested ReadPosts delay us override set via CLI";
+    }
+  }
+#endif
+
   auto handler = std::make_shared<UserTimelineHandler>();
   handler->setBusinessLogic(business_logic.get());
 

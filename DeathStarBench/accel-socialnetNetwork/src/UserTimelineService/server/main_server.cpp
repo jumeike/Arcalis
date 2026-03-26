@@ -417,6 +417,28 @@ int main(int argc, char *argv[]) {
     server.serve();
   }
 
+  std::map<std::string, int64_t> rpc_metrics, business_metrics;
+  handler->GetRpcMetrics(rpc_metrics);
+  handler->GetBusinessMetrics(business_metrics);
+
+  int64_t rpc_time = rpc_metrics["avg_rpc_time_ns"];
+  int64_t business_time = business_metrics["avg_processing_time_ns"];
+  int64_t write_requests = business_metrics["write_requests"];
+  int64_t read_requests = business_metrics["read_requests"];
+  int64_t total_time = rpc_time + business_time;
+
+  double rpc_fraction = (total_time > 0) ? (100.0 * rpc_time / total_time) : 0.0;
+  double business_fraction = (total_time > 0) ? (100.0 * business_time / total_time) : 0.0;
+
+  LOG(info) << "Performance metrics for "
+            << rpc_metrics["requests_processed"] << " requests processed:";
+  LOG(info) << "  RPC: " << rpc_time << " ns avg, "
+            << rpc_fraction << "% of total";
+  LOG(info) << "  Business: " << business_time << " ns avg, "
+            << business_fraction << "% of total";
+  LOG(info) << "  WriteUserTimeline requests: " << write_requests
+            << ", ReadUserTimeline requests: " << read_requests;
+
 #ifdef ENABLE_GEM5_TEST
   unmap_m5_mem();
 #endif

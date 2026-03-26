@@ -90,6 +90,8 @@ private:
   
   // Metrics
   std::atomic<uint64_t> _requests_processed{0};
+  std::atomic<uint64_t> _compose_requests{0};
+  std::atomic<uint64_t> _get_extended_requests{0};
   std::atomic<uint64_t> _total_processing_time_ns{0};
   std::atomic<uint64_t> _mongo_insert_time_ns{0};
   std::atomic<uint64_t> _memcached_time_ns{0};

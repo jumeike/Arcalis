@@ -238,6 +238,8 @@ int main(int argc, char* argv[]) {
 
   int64_t rpc_time = rpc_metrics["avg_rpc_time_ns"];
   int64_t business_time = business_metrics["avg_processing_time_ns"];
+  int64_t compose_requests = business_metrics["compose_requests"];
+  int64_t get_extended_requests = business_metrics["get_extended_requests"];
   int64_t total_time = rpc_time + business_time;
 
   double rpc_fraction = (total_time > 0) ? (100.0 * rpc_time / total_time) : 0.0;
@@ -249,6 +251,9 @@ int main(int argc, char* argv[]) {
             << rpc_fraction << "% of total";
   LOG(info) << "  Business: " << business_time << " ns avg, "
             << business_fraction << "% of total";
+  LOG(info) << "  Store requests: " << compose_requests
+            << ", Read requests: " << 0
+            << ", Read multi requests: " << get_extended_requests;
 
 #ifdef ENABLE_GEM5_TEST
   unmap_m5_mem();

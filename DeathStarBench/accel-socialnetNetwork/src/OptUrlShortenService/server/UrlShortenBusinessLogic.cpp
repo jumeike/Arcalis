@@ -501,6 +501,7 @@ void UrlShortenBusinessLogic::ComposeUrls() {
 
   auto end_time = std::chrono::high_resolution_clock::now();
   _requests_processed++;
+  _compose_requests++;
   _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       end_time - start_time).count();
 
@@ -545,6 +546,7 @@ void UrlShortenBusinessLogic::GetExtendedUrls() {
 
   auto end_time = std::chrono::high_resolution_clock::now();
   _requests_processed++;
+  _get_extended_requests++;
   _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       end_time - start_time).count();
 
@@ -612,6 +614,7 @@ void UrlShortenBusinessLogic::ComposeUrls(
   
   auto end_time = std::chrono::high_resolution_clock::now();
   _requests_processed++;
+  _compose_requests++;
   _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       end_time - start_time).count();
   
@@ -645,6 +648,7 @@ void UrlShortenBusinessLogic::GetExtendedUrls(
   
   auto end_time = std::chrono::high_resolution_clock::now();
   _requests_processed++;
+  _get_extended_requests++;
   _total_processing_time_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
       end_time - start_time).count();
   
@@ -697,6 +701,8 @@ void UrlShortenBusinessLogic::_FetchUrlsFromMongo(
 
 void UrlShortenBusinessLogic::GetMetrics(std::map<std::string, int64_t>& metrics) const {
   metrics["requests_processed"] = _requests_processed.load();
+  metrics["compose_requests"] = _compose_requests.load();
+  metrics["get_extended_requests"] = _get_extended_requests.load();
   metrics["total_processing_time_ns"] = _total_processing_time_ns.load();
   metrics["mongo_insert_time_ns"] = _mongo_insert_time_ns.load();
   metrics["memcached_time_ns"] = _memcached_time_ns.load();
@@ -715,6 +721,8 @@ void UrlShortenBusinessLogic::GetMetrics(std::map<std::string, int64_t>& metrics
 
 void UrlShortenBusinessLogic::ResetMetrics() {
   _requests_processed.store(0);
+  _compose_requests.store(0);
+  _get_extended_requests.store(0);
   _total_processing_time_ns.store(0);
   _mongo_insert_time_ns.store(0);
   _memcached_time_ns.store(0);

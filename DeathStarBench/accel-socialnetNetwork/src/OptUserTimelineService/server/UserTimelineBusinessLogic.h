@@ -299,14 +299,14 @@ class UserTimelineBusinessLogic {
 #endif // ENABLE_CEREBELLUM
 
 #if defined(ENABLE_CEREBELLUM) || defined(ENABLE_NESTED_RPC_TIMING_MODEL)
-    uint64_t storepost_delay_ticks_{0};
-    uint64_t readpost_delay_ticks_{0};
+    uint64_t storepost_delay_ticks_{6354445};
+    uint64_t readpost_delay_ticks_{10580009};
 #endif
 
 #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
     bool nested_rpc_timing_model_enabled_{false};
-    uint64_t nested_storepost_delay_us_{0};
-    uint64_t nested_readposts_delay_us_{0};
+    uint64_t nested_storepost_delay_us_{16};
+    uint64_t nested_readposts_delay_us_{41};
 #endif
 
 #ifdef ENABLE_CEREBELLUM

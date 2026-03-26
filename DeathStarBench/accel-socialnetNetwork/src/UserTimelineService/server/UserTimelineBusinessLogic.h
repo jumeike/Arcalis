@@ -314,8 +314,8 @@ class UserTimelineBusinessLogic {
 #ifdef ENABLE_CEREBELLUM
     volatile uint64_t* readAddress{nullptr};
     volatile uint64_t* sendAddress{nullptr};
-    uint64_t storepost_delay_ticks_{0};
-    uint64_t readpost_delay_ticks_{0};
+    uint64_t storepost_delay_ticks_{6354445};
+    uint64_t readpost_delay_ticks_{10580009};
 
     void callEngineRead();
     bool callEngineDispatch();
@@ -331,8 +331,8 @@ class UserTimelineBusinessLogic {
 
 #ifdef ENABLE_NESTED_RPC_TIMING_MODEL
     bool nested_rpc_timing_model_enabled_{false};
-    uint64_t nested_storepost_delay_us_{583100};
-    uint64_t nested_readposts_delay_us_{1272966};
+    uint64_t nested_storepost_delay_us_{16};
+    uint64_t nested_readposts_delay_us_{41};
 #endif // ENABLE_NESTED_RPC_TIMING_MODEL
 };
 

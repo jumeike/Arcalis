@@ -39,13 +39,13 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with single Redis pool";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 6354445);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 10580009);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
-  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
-  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 16);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 41);
   LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
             << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif
@@ -70,13 +70,13 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with Redis replication";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 6354445);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 10580009);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
-  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
-  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 16);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 41);
   LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
             << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif
@@ -100,13 +100,13 @@ UserTimelineBusinessLogic::UserTimelineBusinessLogic(
   LOG(info) << "UserTimelineBusinessLogic initialized with Redis cluster";
 
 #ifdef ENABLE_CEREBELLUM
-  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 583100000);
-  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 1272966000);
+  storepost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_TICKS", 6354445);
+  readpost_delay_ticks_ = parseDelayTicksEnv("USERTIMELINE_READPOST_DELAY_TICKS", 10580009);
   LOG(info) << "UserTimeline cerebellum nested-call delay ticks configured: store="
             << storepost_delay_ticks_ << " read=" << readpost_delay_ticks_;
 #elif defined(ENABLE_NESTED_RPC_TIMING_MODEL)
-  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 583100);
-  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 1272966);
+  nested_storepost_delay_us_ = parseDelayTicksEnv("USERTIMELINE_STOREPOST_DELAY_US", 16);
+  nested_readposts_delay_us_ = parseDelayTicksEnv("USERTIMELINE_READPOSTS_DELAY_US", 41);
   LOG(info) << "UserTimeline nested-rpc timing-model delay us configured: storepost="
             << nested_storepost_delay_us_ << " readposts=" << nested_readposts_delay_us_;
 #endif

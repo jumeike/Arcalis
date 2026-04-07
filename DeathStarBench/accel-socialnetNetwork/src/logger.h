@@ -5,6 +5,7 @@
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 
+#include <cstdlib>
 #include <string.h>
 
 namespace social_network {
@@ -27,6 +28,16 @@ inline void init_logger() {
   boost::log::add_console_log(
       std::cerr, boost::log::keywords::format =
           "[%TimeStamp%] <%Severity%>: %Message%");
+
+    // Runtime log suppression for gem5 replay runs.
+    // THRIFT_QUIET_LOGS=1 suppresses info/debug and keeps warning+error only.
+    const char* quiet_logs = std::getenv("THRIFT_QUIET_LOGS");
+    if (quiet_logs != nullptr && quiet_logs[0] == '1') {
+        boost::log::core::get()->set_filter(
+                boost::log::trivial::severity >= boost::log::trivial::warning
+        );
+        return;
+    }
 #ifdef DEBUG_LOGGING
   boost::log::core::get()->set_filter (
       boost::log::trivial::severity >= boost::log::trivial::debug

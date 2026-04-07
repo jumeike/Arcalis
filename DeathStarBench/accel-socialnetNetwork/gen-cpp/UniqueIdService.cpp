@@ -7,7 +7,11 @@
 #include "UniqueIdService.h"
 
 #ifdef ENABLE_GEM5
+#if defined(ENABLE_CORE_SPLIT_UNIQUEID_HANDLER)
+#include "../src/CoreSplitUniqueIdService/server/UniqueIdHandler.h"
+#else
 #include "../src/UniqueIdService/server/UniqueIdHandler.h"
+#endif
 #endif
 namespace social_network {
 

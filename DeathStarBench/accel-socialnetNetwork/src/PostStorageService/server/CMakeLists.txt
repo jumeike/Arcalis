@@ -30,6 +30,10 @@ add_executable(
 
 #add_compile_definitions(DEBUG_LOGGING)
 #add_compile_definitions(ENABLE_POSTSTORAGE_GEM5_SERVER)
+target_compile_definitions(
+    ${BINARY_NAME} PRIVATE
+    ENABLE_POSTSTORAGE_GEM5_SERVER
+)
 
 target_include_directories(
     PostStorageService PRIVATE

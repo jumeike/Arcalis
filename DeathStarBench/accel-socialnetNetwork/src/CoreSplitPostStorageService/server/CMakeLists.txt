@@ -10,7 +10,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -no-pie -fno-pie")
 #set(ENABLE_CEREBELLUM ON)
 
 # Uncomment to enable GEM5  
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_GEM5")
 #set(ENABLE_GEM5 ON)
 
 # Set paths for GEM5
@@ -59,13 +59,12 @@ add_executable(
     ${THRIFT_GEN_CPP_DIR}/social_network_constants.cpp
 )
 
+#add_compile_definitions(DEBUG_LOGGING)
+
 target_compile_definitions(
     ${BINARY_NAME} PRIVATE
-    ENABLE_OPT_POSTSTORAGE_HANDLER
+    ENABLE_CORE_SPLIT_POSTSTORAGE_HANDLER
 )
-
-#add_compile_definitions(DEBUG_LOGGING)
-#add_compile_definitions(ENABLE_POSTSTORAGE_GEM5_SERVER)
 
 target_include_directories(
     ${BINARY_NAME} PRIVATE
@@ -90,3 +89,5 @@ target_link_libraries(
     Boost::log_setup
     ${EXTRA_LIBS}
 )
+
+install(TARGETS ${BINARY_NAME} DESTINATION ./)

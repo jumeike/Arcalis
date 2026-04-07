@@ -6,9 +6,14 @@
  */
 #include "PostStorageService.h"
 
-#if defined(ENABLE_GEM5) && defined(ENABLE_POSTSTORAGE_GEM5_SERVER)
-// #include "../src/OptPostStorageService/server/PostStorageHandler.h"
+#if defined(ENABLE_GEM5) && (defined(ENABLE_POSTSTORAGE_GEM5_SERVER) || defined(ENABLE_CORE_SPLIT_POSTSTORAGE_HANDLER) || defined(ENABLE_OPT_POSTSTORAGE_HANDLER))
+#if defined(ENABLE_CORE_SPLIT_POSTSTORAGE_HANDLER)
+#include "../src/CoreSplitPostStorageService/server/PostStorageHandler.h"
+#elif defined(ENABLE_OPT_POSTSTORAGE_HANDLER)
+#include "../src/OptPostStorageService/server/PostStorageHandler.h"
+#else
 #include "../src/PostStorageService/server/PostStorageHandler.h"
+#endif
 #endif
 namespace social_network {
 
@@ -1169,7 +1174,7 @@ bool PostStorageServiceProcessor::dispatchCall(::apache::thrift::protocol::TProt
   return true;
 }
 
-#if defined(ENABLE_GEM5) && defined(ENABLE_POSTSTORAGE_GEM5_SERVER)
+#if defined(ENABLE_GEM5) && (defined(ENABLE_POSTSTORAGE_GEM5_SERVER) || defined(ENABLE_CORE_SPLIT_POSTSTORAGE_HANDLER) || defined(ENABLE_OPT_POSTSTORAGE_HANDLER))
 bool PostStorageServiceProcessor::process(
    std::shared_ptr<apache::thrift::protocol::TProtocol> in,
    std::shared_ptr<apache::thrift::protocol::TProtocol> out,

@@ -7,8 +7,13 @@
 #include "UrlShortenService.h"
 
 #ifdef ENABLE_GEM5
-//#include "../src/OptUrlShortenService/server/UrlShortenHandler.h"
+#if defined(ENABLE_CORE_SPLIT_URLSHORTEN_HANDLER)
+#include "../src/CoreSplitUrlShortenService/server/UrlShortenHandler.h"
+#elif defined(ENABLE_OPT_URLSHORTEN_HANDLER)
+#include "../src/OptUrlShortenService/server/UrlShortenHandler.h"
+#else
 #include "../src/UrlShortenService/server/UrlShortenHandler.h"
+#endif
 #endif
 
 namespace social_network {
